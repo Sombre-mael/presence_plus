@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,104 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  id          String       @id @default(cuid())
+  name        String
+  email       String       @unique
+  password    String
+  role        Role
+  status      UserStatus
+  createdAt   DateTime     @default(now())
+  promotionId String?
+  updatedAt   DateTime     @updatedAt
+  attendances Attendance[]
+  auditLogs   AuditLog[]
+  courses     Course[]     @relation("TeacherCourses")
+  sessions    Session[]    @relation("TeacherSessions")
+  promotion   Promotion?   @relation(fields: [promotionId], references: [id])
+}
+
+model Course {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  promotionId String
+  teacherId   String
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+  teacher     User      @relation("TeacherCourses", fields: [teacherId], references: [id])
+  sessions    Session[]
+}
+
+model Promotion {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  courses     Course[]
+  users       User[]
+}
+
+model Session {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  courseId    String
+  status      SessionStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  teacherId   String
+  attendances Attendance[]
+  courses     Course        @relation(fields: [courseId], references: [id])
+  teacher     User          @relation("TeacherSessions", fields: [teacherId], references: [id])
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  userId    String
+  sessionId String
+  status    AttendanceStatus
+  source    AttendanceSource
+  createdAt DateTime         @default(now())
+  session   Session          @relation(fields: [sessionId], references: [id])
+  user      User             @relation(fields: [userId], references: [id])
+
+  @@unique([userId, sessionId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SessionStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  JUSTIFIED
+}
+
+enum AttendanceSource {
+  QR_CODE
+  CODE
+  MANUAL
 }
