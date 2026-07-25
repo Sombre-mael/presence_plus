@@ -10,6 +10,7 @@ import type {
   MutationResult,
   StatisticsFilters,
 } from "@/types/admin";
+import { isStoredAcademicData } from "./academic-domain";
 
 const requiredText = z.string().trim().min(2, "Ce champ doit contenir au moins 2 caractères.");
 
@@ -144,7 +145,8 @@ export function getCourseDeleteBlockers(state: AdminDataState, id: string): stri
 }
 
 export function getAdminDashboardStats(state: AdminDataState): AdminDashboardStats {
-  const completed = state.sessions.filter((session) => session.status !== "SCHEDULED" && session.expectedCount > 0);
+  const completed = state.sessions.filter((session) =>
+    ["ACTIVE", "COMPLETED"].includes(session.status) && session.expectedCount > 0);
   const present = completed.reduce((total, session) => total + session.presentCount, 0);
   const expected = completed.reduce((total, session) => total + session.expectedCount, 0);
   return {
@@ -219,7 +221,7 @@ export function getFilteredSessions(state: AdminDataState, filters: StatisticsFi
 
 export function getAttendanceTrend(state: AdminDataState, filters: StatisticsFilters): AttendanceTrendPoint[] {
   return getFilteredSessions(state, filters)
-    .filter((session) => session.status !== "SCHEDULED")
+    .filter((session) => ["ACTIVE", "COMPLETED"].includes(session.status))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((session) => {
       const late = Math.max(1, Math.round(session.presentCount * 0.08));
@@ -237,8 +239,5 @@ export function getAttendanceTrend(state: AdminDataState, filters: StatisticsFil
 }
 
 export function isStoredAdminData(value: unknown): value is AdminDataState {
-  if (!value || typeof value !== "object") return false;
-  const data = value as Partial<AdminDataState>;
-  return data.version === 1 && Array.isArray(data.users) && Array.isArray(data.promotions) &&
-    Array.isArray(data.courses) && Array.isArray(data.sessions) && Array.isArray(data.attendances);
+  return isStoredAcademicData(value);
 }

@@ -32,7 +32,7 @@ test("un utilisateur peut être créé, persisté et supprimé", async ({ page }
   await page.getByRole("option", { name: "Administrateur" }).click();
   await dialog.getByRole("button", { name: "Ajouter", exact: true }).click();
   await expect(page.getByText(name).first()).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:admin-data:v1"))).toContain("marc.test@presence.plus");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toContain("marc.test@presence.plus");
 
   await page.reload();
   await expect(page.getByText(name).first()).toBeVisible();

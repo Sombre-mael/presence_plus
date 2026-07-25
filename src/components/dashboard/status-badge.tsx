@@ -9,6 +9,12 @@ const labels: Record<string, string> = {
   PRESENT: "Présent",
   LATE: "En retard",
   ABSENT: "Absent",
+  EXCUSED: "Justifiée",
+  PENDING: "En attente",
+  CANCELLED: "Annulée",
+  PENDING_REQUEST: "En attente",
+  APPROVED: "Acceptée",
+  REJECTED: "Refusée",
 };
 
 export function StatusBadge({ status }: { status: string }) {
@@ -18,9 +24,12 @@ export function StatusBadge({ status }: { status: string }) {
       className={cn(
         "font-normal",
         ["ACTIVE", "PRESENT"].includes(status) && "border-emerald-200 bg-emerald-50 text-emerald-700",
-        ["SCHEDULED"].includes(status) && "border-sky-200 bg-sky-50 text-sky-700",
+        ["SCHEDULED", "PENDING", "PENDING_REQUEST"].includes(status) && "border-sky-200 bg-sky-50 text-sky-700",
         ["LATE"].includes(status) && "border-amber-200 bg-amber-50 text-amber-700",
-        ["INACTIVE", "ABSENT"].includes(status) && "border-red-200 bg-red-50 text-red-700",
+        ["INACTIVE", "ABSENT", "CANCELLED"].includes(status) && "border-red-200 bg-red-50 text-red-700",
+        ["EXCUSED"].includes(status) && "border-violet-200 bg-violet-50 text-violet-700",
+        ["APPROVED"].includes(status) && "border-emerald-200 bg-emerald-50 text-emerald-700",
+        ["REJECTED"].includes(status) && "border-red-200 bg-red-50 text-red-700",
         ["COMPLETED"].includes(status) && "border-neutral-200 bg-neutral-50 text-neutral-600",
       )}
     >

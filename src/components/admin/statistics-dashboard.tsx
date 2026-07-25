@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { StatisticsFilters, StatisticsPeriod } from "@/types/admin";
+import type { StatisticsPeriod } from "@/types/admin";
 
 function csvCell(value: string | number) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -36,7 +36,6 @@ export function StatisticsDashboard() {
   const [period, setPeriod] = useState<StatisticsPeriod>("30D");
   const [promotionId, setPromotionId] = useState("");
   const [courseId, setCourseId] = useState("");
-  const filters: StatisticsFilters = { period, promotionId, courseId };
   const sessions = useMemo(
     () => getFilteredSessions(state, { period, promotionId, courseId }),
     [courseId, period, promotionId, state],

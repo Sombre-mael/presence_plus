@@ -29,9 +29,8 @@ export function DashboardLayout({ children, role, user, anomalies = [], onResetD
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    if (role !== "ADMIN") return;
     const timeout = window.setTimeout(() => {
-      setCollapsed(window.localStorage.getItem("presence-plus:admin-sidebar") === "collapsed");
+      setCollapsed(window.localStorage.getItem(`presence-plus:${role.toLocaleLowerCase()}-sidebar`) === "collapsed");
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [role]);
@@ -39,7 +38,7 @@ export function DashboardLayout({ children, role, user, anomalies = [], onResetD
   function toggleSidebar() {
     setCollapsed((current) => {
       const next = !current;
-      window.localStorage.setItem("presence-plus:admin-sidebar", next ? "collapsed" : "expanded");
+      window.localStorage.setItem(`presence-plus:${role.toLocaleLowerCase()}-sidebar`, next ? "collapsed" : "expanded");
       return next;
     });
   }
@@ -48,13 +47,13 @@ export function DashboardLayout({ children, role, user, anomalies = [], onResetD
     <div className="min-h-screen bg-muted/30">
       <aside
         className={`fixed inset-y-0 left-0 z-40 hidden border-r bg-sidebar transition-[width] duration-200 lg:block ${
-          role === "ADMIN" && collapsed ? "w-20" : "w-64"
+          collapsed ? "w-20" : "w-64"
         }`}
       >
-        <Sidebar role={role} collapsed={role === "ADMIN" && collapsed} onToggle={role === "ADMIN" ? toggleSidebar : undefined} />
+        <Sidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} />
       </aside>
 
-      <div className={`transition-[padding] duration-200 ${role === "ADMIN" && collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
+      <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
         <div className="sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur lg:px-8">
           <Sheet>
             <SheetTrigger asChild>

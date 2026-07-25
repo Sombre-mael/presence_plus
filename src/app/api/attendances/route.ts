@@ -4,7 +4,7 @@ import { attendances, getSession } from "@/lib/mock-data";
 
 const querySchema = z.object({
   sessionId: z.string().trim().min(1).optional(),
-  status: z.enum(["PRESENT", "LATE", "ABSENT"]).optional(),
+  status: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]).optional(),
 });
 
 export function GET(request: NextRequest) {

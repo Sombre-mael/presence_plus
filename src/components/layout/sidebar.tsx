@@ -49,11 +49,10 @@ const navigation: Record<Role, NavItem[]> = {
   TEACHER: [
     { href: "/teacher/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { href: "/teacher/sessions", label: "Mes sessions", icon: CalendarCheck },
-    { href: "/teacher/sessions/new", label: "Nouvelle session", icon: QrCode },
   ],
   STUDENT: [
     { href: "/student/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-    { href: "/student/check-in", label: "Pointer ma présence", icon: ClipboardCheck },
+    { href: "/student/schedule", label: "Mon planning", icon: CalendarCheck },
     { href: "/student/history", label: "Mon historique", icon: History },
   ],
 };
@@ -81,6 +80,41 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle }: S
 
       <TooltipProvider>
       <nav className="flex-1 space-y-1 p-3">
+        {(role === "TEACHER" || role === "STUDENT") && (
+          <div className="pb-3">
+            {mobile ? (
+              <SheetClose asChild>
+                <Button asChild className="w-full">
+                  <Link href={role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in"}>
+                    {role === "TEACHER" ? <QrCode /> : <ClipboardCheck />}
+                    {role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}
+                  </Link>
+                </Button>
+              </SheetClose>
+            ) : collapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button asChild size="icon" className="w-full">
+                    <Link
+                      href={role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in"}
+                      aria-label={role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}
+                    >
+                      {role === "TEACHER" ? <QrCode /> : <ClipboardCheck />}
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button asChild className="w-full">
+                <Link href={role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in"}>
+                  {role === "TEACHER" ? <QrCode /> : <ClipboardCheck />}
+                  {role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}
+                </Link>
+              </Button>
+            )}
+          </div>
+        )}
         {navigation[role].map((item) => {
           const active =
             pathname === item.href ||

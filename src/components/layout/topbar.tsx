@@ -27,10 +27,12 @@ const labels: Record<string, string> = {
   statistics: "Statistiques",
   sessions: "Sessions",
   new: "Nouvelle session",
+  edit: "Modifier",
   qr: "QR code",
   attendances: "Présences",
   "check-in": "Pointage",
   history: "Historique",
+  schedule: "Mon planning",
 };
 
 function getBreadcrumb(pathname: string) {
@@ -79,12 +81,12 @@ export function Topbar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[min(360px,calc(100vw-2rem))]">
             <DropdownMenuLabel className="flex items-center justify-between">
-              <span>Points d’attention</span>
+              <span>Notifications</span>
               <span className="text-xs font-normal text-muted-foreground">{anomalies.length} à traiter</span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {anomalies.length === 0 ? (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">Aucune anomalie détectée.</div>
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">Aucune notification.</div>
             ) : anomalies.slice(0, 4).map((anomaly) => (
               <DropdownMenuItem asChild key={anomaly.id} className="items-start gap-3 py-3">
                 <Link href={anomaly.href}>

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { sessions } from "@/lib/mock-data";
 
 const querySchema = z.object({
-  status: z.enum(["SCHEDULED", "ACTIVE", "COMPLETED"]).optional(),
+  status: z.enum(["SCHEDULED", "ACTIVE", "COMPLETED", "CANCELLED"]).optional(),
   teacher: z.string().trim().min(1).optional(),
 });
 

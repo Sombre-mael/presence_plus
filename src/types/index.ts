@@ -1,8 +1,9 @@
 export type Role = "ADMIN" | "TEACHER" | "STUDENT";
 
 export type UserStatus = "ACTIVE" | "INACTIVE";
-export type SessionStatus = "SCHEDULED" | "ACTIVE" | "COMPLETED";
-export type AttendanceStatus = "PRESENT" | "LATE" | "ABSENT";
+export type SessionStatus = "SCHEDULED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+export type AttendanceStatus = "PRESENT" | "LATE" | "ABSENT" | "EXCUSED";
+export type AttendanceSource = "QR" | "STUDENT_CODE" | "MANUAL";
 
 export interface UserSummary {
   id: string;
@@ -36,7 +37,9 @@ export interface SessionSummary {
   courseCode: string;
   courseName: string;
   teacher: string;
+  teacherId?: string;
   promotion: string;
+  promotionId?: string;
   date: string;
   startTime: string;
   endTime: string;
@@ -44,6 +47,12 @@ export interface SessionSummary {
   status: SessionStatus;
   presentCount: number;
   expectedCount: number;
+  lateThresholdMinutes?: number;
+  createdAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  cancellationReason?: string;
 }
 
 export interface AttendanceRecord {
@@ -55,6 +64,11 @@ export interface AttendanceRecord {
   promotion: string;
   checkedInAt?: string;
   status: AttendanceStatus;
+  source?: AttendanceSource;
+  note?: string;
+  correctionReason?: string;
+  correctedAt?: string;
+  correctedBy?: string;
 }
 
 export interface DashboardStat {

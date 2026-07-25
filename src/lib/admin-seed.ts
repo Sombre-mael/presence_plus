@@ -35,13 +35,13 @@ const attendances: AttendanceRecord[] = [
   { id: "a1", sessionId: "session-001", studentId: "u4", studentName: "Sarah Mbuyi", matricule: "INF22-041", promotion: "L2 Informatique", checkedInAt: "08:02", status: "PRESENT" },
   { id: "a2", sessionId: "session-001", studentId: "u5", studentName: "David Kalala", matricule: "INF22-018", promotion: "L2 Informatique", checkedInAt: "08:14", status: "LATE" },
   { id: "a3", sessionId: "session-001", studentId: "u7", studentName: "Naomi Kanku", matricule: "INF22-027", promotion: "L2 Informatique", checkedInAt: "08:05", status: "PRESENT" },
-  { id: "a4", sessionId: "session-001", studentId: "u8", studentName: "Junior Mpoyi", matricule: "INF22-033", status: "ABSENT", promotion: "L2 Informatique" },
+  { id: "a4", sessionId: "session-001", studentId: "u8", studentName: "Junior Mpoyi", matricule: "INF22-033", checkedInAt: "08:07", status: "PRESENT", promotion: "L2 Informatique" },
   { id: "a5", sessionId: "session-003", studentId: "u10", studentName: "Mireille Kasongo", matricule: "INF25-011", promotion: "L1 Informatique", checkedInAt: "14:03", status: "PRESENT" },
   { id: "a6", sessionId: "session-004", studentId: "u4", studentName: "Sarah Mbuyi", matricule: "INF22-041", promotion: "L2 Informatique", checkedInAt: "08:11", status: "LATE" },
 ];
 
 export const initialAdminData: AdminDataState = {
-  version: 1,
+  version: 3,
   users,
   promotions: [
     { id: "p1", name: "L1 Informatique", department: "Sciences informatiques", academicYear: "2025-2026", createdAt },
@@ -55,8 +55,72 @@ export const initialAdminData: AdminDataState = {
     { id: "c3", code: "INF101", name: "Introduction à la programmation", teacherId: "u2", promotionId: "p1", weeklyHours: 6, createdAt },
     { id: "c4", code: "GES105", name: "Comptabilité générale", teacherId: "u9", promotionId: "p4", weeklyHours: 4, createdAt },
   ],
-  sessions,
-  attendances,
+  sessions: sessions.map((session) => {
+    const course = [
+      { id: "c1", teacherId: "u2", promotionId: "p2" },
+      { id: "c2", teacherId: "u3", promotionId: "p2" },
+      { id: "c3", teacherId: "u2", promotionId: "p1" },
+      { id: "c4", teacherId: "u9", promotionId: "p4" },
+    ].find((item) => item.id === session.courseId);
+    const expectedCount = users.filter((user) =>
+      user.role === "STUDENT" &&
+      user.status === "ACTIVE" &&
+      user.promotionId === course?.promotionId).length;
+    const presentCount = session.status === "SCHEDULED" || !session.expectedCount
+      ? 0
+      : Math.min(expectedCount, Math.round(session.presentCount / session.expectedCount * expectedCount));
+    return {
+      ...session,
+      teacherId: course?.teacherId,
+      promotionId: course?.promotionId,
+      lateThresholdMinutes: 10,
+      expectedCount,
+      presentCount,
+      createdAt,
+      startedAt: session.status !== "SCHEDULED" ? `${session.date}T${session.startTime}:00.000Z` : undefined,
+      completedAt: session.status === "COMPLETED" ? `${session.date}T${session.endTime}:00.000Z` : undefined,
+    };
+  }),
+  attendances: [
+    ...attendances.filter((attendance) => attendance.id !== "a1").map((attendance) => ({
+      ...attendance,
+      source: "QR" as const,
+    })),
+    ...sessions.flatMap((session) => {
+      if (session.status !== "COMPLETED") return [];
+      const course = [
+        { id: "c1", promotionId: "p2" },
+        { id: "c2", promotionId: "p2" },
+        { id: "c3", promotionId: "p1" },
+        { id: "c4", promotionId: "p4" },
+      ].find((item) => item.id === session.courseId);
+      const students = users.filter((user) =>
+        user.role === "STUDENT" &&
+        user.status === "ACTIVE" &&
+        user.promotionId === course?.promotionId);
+      const existing = attendances.filter((attendance) => attendance.sessionId === session.id);
+      const targetPresent = session.expectedCount
+        ? Math.round(session.presentCount / session.expectedCount * students.length)
+        : 0;
+      let remainingPresent = Math.max(0, targetPresent - existing.filter((item) => ["PRESENT", "LATE"].includes(item.status)).length);
+      return students.filter((student) => !existing.some((item) => item.studentId === student.id)).map((student, index) => {
+        const isPresent = remainingPresent-- > 0;
+        return {
+          id: `seed-${session.id}-${student.id}`,
+          sessionId: session.id,
+          studentId: student.id,
+          studentName: student.name,
+          matricule: student.matricule ?? "—",
+          promotion: session.promotion,
+          checkedInAt: isPresent ? session.startTime : undefined,
+          status: isPresent ? "PRESENT" as const : "ABSENT" as const,
+          source: "QR" as const,
+          note: index === 0 ? "Donnée de démonstration." : undefined,
+        };
+      });
+    }),
+  ],
+  correctionRequests: [],
 };
 
 export function freshAdminData(): AdminDataState {

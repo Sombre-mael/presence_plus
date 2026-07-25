@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { AcademicDataProvider } from "@/components/admin/admin-data-provider";
+import { StudentShell } from "@/components/student/student-shell";
 import { demoAccounts } from "@/lib/mock-data";
 
 export default function StudentLayout({ children }: { children: ReactNode }) {
   return (
-    <DashboardLayout role="STUDENT" user={demoAccounts.STUDENT}>
-      {children}
-    </DashboardLayout>
+    <AcademicDataProvider>
+      <StudentShell user={demoAccounts.STUDENT}>{children}</StudentShell>
+    </AcademicDataProvider>
   );
 }

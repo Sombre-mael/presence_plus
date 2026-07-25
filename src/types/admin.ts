@@ -5,6 +5,7 @@ import type {
   SessionStatus,
   UserStatus,
 } from "@/types";
+import type { AttendanceCorrectionRequest } from "@/types/student";
 
 export interface AdminUser {
   id: string;
@@ -35,14 +36,17 @@ export interface AdminCourse {
   createdAt: string;
 }
 
-export interface AdminDataState {
-  version: 1;
+export interface AcademicDataState {
+  version: 3;
   users: AdminUser[];
   promotions: AdminPromotion[];
   courses: AdminCourse[];
   sessions: SessionSummary[];
   attendances: AttendanceRecord[];
+  correctionRequests: AttendanceCorrectionRequest[];
 }
+
+export type AdminDataState = AcademicDataState;
 
 export type AdminUserInput = Omit<AdminUser, "id" | "createdAt">;
 export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt">;
@@ -52,6 +56,24 @@ export interface MutationResult {
   ok: boolean;
   message: string;
   fieldErrors?: Record<string, string>;
+}
+
+export interface TeacherSessionInput {
+  courseId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  lateThresholdMinutes: number;
+}
+
+export interface AttendanceInput {
+  studentId: string;
+  status: "PRESENT" | "LATE" | "ABSENT" | "EXCUSED";
+  checkedInAt?: string;
+  source: "QR" | "MANUAL";
+  note?: string;
+  correctionReason?: string;
 }
 
 export interface AdminDashboardStats {
