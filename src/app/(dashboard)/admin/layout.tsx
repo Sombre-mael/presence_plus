@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { AdminDataProvider } from "@/components/admin/admin-data-provider";
+import { AdminShell } from "@/components/admin/admin-shell";
 import { demoAccounts } from "@/lib/mock-data";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <DashboardLayout role="ADMIN" user={demoAccounts.ADMIN}>
-      {children}
-    </DashboardLayout>
+    <AdminDataProvider>
+      <AdminShell user={demoAccounts.ADMIN}>{children}</AdminShell>
+    </AdminDataProvider>
   );
 }

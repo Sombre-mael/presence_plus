@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, LogOut } from "lucide-react";
+import { AlertTriangle, Bell, ChevronDown, LogOut, RotateCcw } from "lucide-react";
 import type { UserSummary } from "@/types";
+import type { AdminAnomaly } from "@/types/admin";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +41,15 @@ function getBreadcrumb(pathname: string) {
     .map((segment) => labels[segment] ?? (segment.startsWith("session-") ? "Détail" : segment));
 }
 
-export function Topbar({ user }: { user: UserSummary }) {
+export function Topbar({
+  user,
+  anomalies = [],
+  onResetDemo,
+}: {
+  user: UserSummary;
+  anomalies?: AdminAnomaly[];
+  onResetDemo?: () => void;
+}) {
   const pathname = usePathname();
   const breadcrumb = getBreadcrumb(pathname);
   const initials = user.name
@@ -59,9 +68,36 @@ export function Topbar({ user }: { user: UserSummary }) {
       </div>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" aria-label="Notifications">
-          <Bell />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label={`${anomalies.length} notifications`}>
+              <Bell />
+              {anomalies.length > 0 && (
+                <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-red-500 ring-2 ring-background" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[min(360px,calc(100vw-2rem))]">
+            <DropdownMenuLabel className="flex items-center justify-between">
+              <span>Points d’attention</span>
+              <span className="text-xs font-normal text-muted-foreground">{anomalies.length} à traiter</span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {anomalies.length === 0 ? (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">Aucune anomalie détectée.</div>
+            ) : anomalies.slice(0, 4).map((anomaly) => (
+              <DropdownMenuItem asChild key={anomaly.id} className="items-start gap-3 py-3">
+                <Link href={anomaly.href}>
+                  <AlertTriangle className={anomaly.severity === "HIGH" ? "text-red-600" : "text-amber-600"} />
+                  <span>
+                    <span className="block font-medium">{anomaly.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{anomaly.detail}</span>
+                  </span>
+                </Link>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-10 gap-2 px-2">
@@ -78,6 +114,12 @@ export function Topbar({ user }: { user: UserSummary }) {
               <span className="block truncate text-xs font-normal text-muted-foreground">{user.email}</span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {onResetDemo && (
+              <DropdownMenuItem onSelect={onResetDemo}>
+                <RotateCcw />
+                Restaurer les données démo
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem asChild>
               <Link href="/login">
                 <LogOut />

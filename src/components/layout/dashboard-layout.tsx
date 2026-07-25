@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Menu } from "lucide-react";
 import type { Role, UserSummary } from "@/types";
+import type { AdminAnomaly } from "@/types/admin";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -14,21 +15,46 @@ import {
 } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { RouteTransition } from "./route-transition";
 
 interface DashboardLayoutProps {
   children: ReactNode;
   role: Role;
   user: UserSummary;
+  anomalies?: AdminAnomaly[];
+  onResetDemo?: () => void;
 }
 
-export function DashboardLayout({ children, role, user }: DashboardLayoutProps) {
+export function DashboardLayout({ children, role, user, anomalies = [], onResetDemo }: DashboardLayoutProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (role !== "ADMIN") return;
+    const timeout = window.setTimeout(() => {
+      setCollapsed(window.localStorage.getItem("presence-plus:admin-sidebar") === "collapsed");
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [role]);
+
+  function toggleSidebar() {
+    setCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("presence-plus:admin-sidebar", next ? "collapsed" : "expanded");
+      return next;
+    });
+  }
+
   return (
     <div className="min-h-screen bg-muted/30">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r bg-sidebar lg:block">
-        <Sidebar role={role} />
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 hidden border-r bg-sidebar transition-[width] duration-200 lg:block ${
+          role === "ADMIN" && collapsed ? "w-20" : "w-64"
+        }`}
+      >
+        <Sidebar role={role} collapsed={role === "ADMIN" && collapsed} onToggle={role === "ADMIN" ? toggleSidebar : undefined} />
       </aside>
 
-      <div className="lg:pl-64">
+      <div className={`transition-[padding] duration-200 ${role === "ADMIN" && collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
         <div className="sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur lg:px-8">
           <Sheet>
             <SheetTrigger asChild>
@@ -44,10 +70,12 @@ export function DashboardLayout({ children, role, user }: DashboardLayoutProps) 
               <Sidebar role={role} mobile />
             </SheetContent>
           </Sheet>
-          <Topbar user={user} />
+          <Topbar user={user} anomalies={anomalies} onResetDemo={onResetDemo} />
         </div>
 
-        <main className="mx-auto w-full max-w-[1440px] p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1440px] p-4 sm:p-6 lg:p-8">
+          <RouteTransition>{children}</RouteTransition>
+        </main>
       </div>
     </div>
   );

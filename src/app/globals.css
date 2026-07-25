@@ -124,6 +124,7 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
   }
 }
 
@@ -131,5 +132,11 @@
   .metric-number {
     font-family: "Courier New", Courier, ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
   }
 }
