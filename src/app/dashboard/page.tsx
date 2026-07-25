@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function DashboardPage() {
-  return <main>Accueil du tableau de bord.</main>;
+  redirect("/login");
 }
