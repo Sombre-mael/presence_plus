@@ -1,3 +1,5 @@
+import { CoursesManager } from "@/components/admin/entity-managers";
+
 export default function AdminCoursesPage() {
-  return <main>Gestion des cours.</main>;
+  return <CoursesManager />;
 }

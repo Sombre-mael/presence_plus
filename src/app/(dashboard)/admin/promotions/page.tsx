@@ -1,3 +1,5 @@
+import { PromotionsManager } from "@/components/admin/entity-managers";
+
 export default function AdminPromotionsPage() {
-  return <main>Gestion des promotions.</main>;
+  return <PromotionsManager />;
 }

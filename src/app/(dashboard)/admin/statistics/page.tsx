@@ -1,3 +1,5 @@
+import { StatisticsDashboard } from "@/components/admin/statistics-dashboard";
+
 export default function AdminStatisticsPage() {
-  return <main>Statistiques des presences.</main>;
+  return <StatisticsDashboard />;
 }

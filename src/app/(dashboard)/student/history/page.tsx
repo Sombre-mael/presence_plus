@@ -1,3 +1,5 @@
+import { StudentHistory } from "@/components/student/student-history";
+
 export default function StudentHistoryPage() {
-  return <main>Historique des presences.</main>;
+  return <StudentHistory />;
 }

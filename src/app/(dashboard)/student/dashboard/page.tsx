@@ -1,3 +1,5 @@
+import { StudentDashboard } from "@/components/student/student-dashboard";
+
 export default function StudentDashboardPage() {
-  return <main>Tableau de bord etudiant.</main>;
+  return <StudentDashboard />;
 }
