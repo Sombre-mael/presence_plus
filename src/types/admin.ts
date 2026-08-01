@@ -16,6 +16,7 @@ export interface AdminUser {
   promotionId?: string;
   matricule?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AdminPromotion {
@@ -23,7 +24,9 @@ export interface AdminPromotion {
   name: string;
   department: string;
   academicYear: string;
+  description?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AdminCourse {
@@ -33,6 +36,20 @@ export interface AdminCourse {
   teacherId: string;
   promotionId: string;
   weeklyHours: number;
+  description?: string;
+  active?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -44,13 +61,14 @@ export interface AcademicDataState {
   sessions: SessionSummary[];
   attendances: AttendanceRecord[];
   correctionRequests: AttendanceCorrectionRequest[];
+  auditLogs: AdminAuditLog[];
 }
 
 export type AdminDataState = AcademicDataState;
 
-export type AdminUserInput = Omit<AdminUser, "id" | "createdAt">;
-export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt">;
-export type AdminCourseInput = Omit<AdminCourse, "id" | "createdAt">;
+export type AdminUserInput = Omit<AdminUser, "id" | "createdAt" | "updatedAt">;
+export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt" | "updatedAt">;
+export type AdminCourseInput = Omit<AdminCourse, "id" | "createdAt" | "updatedAt">;
 
 export interface MutationResult {
   ok: boolean;
@@ -59,6 +77,8 @@ export interface MutationResult {
 }
 
 export interface TeacherSessionInput {
+  name?: string;
+  description?: string;
   courseId: string;
   date: string;
   startTime: string;
@@ -105,7 +125,7 @@ export interface SessionFilters {
   date: string;
 }
 
-export type StatisticsPeriod = "7D" | "30D" | "SEMESTER";
+export type StatisticsPeriod = "7D" | "30D" | "180D";
 
 export interface StatisticsFilters {
   period: StatisticsPeriod;

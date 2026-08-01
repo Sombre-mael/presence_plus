@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition } from "react";
 import { AlertTriangle, Bell, ChevronDown, LogOut, RotateCcw } from "lucide-react";
 import type { UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
+import { clearDemoViewerAction } from "@/actions/demo-session.actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +27,7 @@ const labels: Record<string, string> = {
   promotions: "Promotions",
   courses: "Cours",
   statistics: "Statistiques",
+  audit: "Journal d’activité",
   sessions: "Sessions",
   new: "Nouvelle session",
   edit: "Modifier",
@@ -53,6 +56,8 @@ export function Topbar({
   onResetDemo?: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [leaving, startLeaving] = useTransition();
   const breadcrumb = getBreadcrumb(pathname);
   const initials = user.name
     .split(" ")
@@ -119,14 +124,19 @@ export function Topbar({
             {onResetDemo && (
               <DropdownMenuItem onSelect={onResetDemo}>
                 <RotateCcw />
-                Restaurer les données démo
+                Recharger depuis Neon
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem asChild>
-              <Link href="/login">
-                <LogOut />
-                Quitter la démonstration
-              </Link>
+            <DropdownMenuItem
+              disabled={leaving}
+              onSelect={() => startLeaving(async () => {
+                await clearDemoViewerAction();
+                router.push("/login");
+                router.refresh();
+              })}
+            >
+              <LogOut />
+              {leaving ? "Fermeture..." : "Changer de profil"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

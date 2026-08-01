@@ -1,12 +1,18 @@
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 import { AcademicDataProvider } from "@/components/admin/admin-data-provider";
 import { TeacherShell } from "@/components/teacher/teacher-shell";
-import { demoAccounts } from "@/lib/mock-data";
+import { getAcademicSnapshot } from "@/lib/academic-repository";
+import { getDemoViewer, roleHome } from "@/lib/demo-viewer";
 
-export default function TeacherLayout({ children }: { children: ReactNode }) {
+export default async function TeacherLayout({ children }: { children: ReactNode }) {
+  const viewer = await getDemoViewer();
+  if (!viewer) redirect("/login");
+  if (viewer.role !== "TEACHER") redirect(roleHome(viewer.role));
+  const initialState = await getAcademicSnapshot(viewer);
   return (
-    <AcademicDataProvider>
-      <TeacherShell user={demoAccounts.TEACHER}>{children}</TeacherShell>
+    <AcademicDataProvider initialState={initialState} viewerId={viewer.id}>
+      <TeacherShell user={viewer}>{children}</TeacherShell>
     </AcademicDataProvider>
   );
 }

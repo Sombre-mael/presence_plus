@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { cleanupCorrectionFixture, cleanupSessionFixture, createActiveSessionFixture, latestPendingCorrectionFixture, selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/student/dashboard");
+  await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await selectDemoProfile(page, "Sarah Mbuyi");
   await expect(page.getByRole("heading", { name: "Bonjour Sarah" })).toBeVisible();
 });
 
@@ -18,21 +19,28 @@ test("la navigation étudiante conserve son état compact", async ({ page }) => 
 });
 
 test("Sarah peut pointer avec le code tournant puis retrouver le résultat", async ({ page }) => {
-  await page.goto("/teacher/sessions/session-001/qr");
-  const code = await page.locator("p.metric-number").filter({ hasText: /^PP-/ }).textContent();
-  expect(code).toBeTruthy();
+  const sessionId = await createActiveSessionFixture();
+  try {
+    await selectDemoProfile(page, "Patrick Ilunga");
+    await page.goto(`/teacher/sessions/${sessionId}/qr`);
+    const code = await page.locator("p.metric-number").filter({ hasText: /^[A-F0-9]{8}$/ }).textContent();
+    expect(code).toBeTruthy();
 
-  await page.goto("/student/check-in");
-  await page.getByRole("tab", { name: "Code manuel" }).click();
-  await page.getByLabel("Code affiché par l’enseignant").fill(code!);
-  await page.getByRole("button", { name: "Vérifier le code" }).click();
-  await expect(page.getByRole("heading", { name: "Algorithmique avancée" })).toBeVisible();
-  await page.getByRole("button", { name: "Confirmer ma présence" }).click();
-  await expect(page.getByRole("heading", { name: "Présence confirmée" })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toContain("STUDENT_CODE");
+    await selectDemoProfile(page, "Sarah Mbuyi");
+    await page.goto("/student/check-in");
+    await page.getByRole("tab", { name: "Code manuel" }).click();
+    await page.getByLabel("Code affiché par l’enseignant").fill(code!);
+    await page.getByRole("button", { name: "Vérifier le code" }).click();
+    await expect(page.getByRole("heading", { name: "Algorithmique avancée" })).toBeVisible();
+    await page.getByRole("button", { name: "Confirmer ma présence" }).click();
+    await expect(page.getByRole("heading", { name: "Présence confirmée" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toBeNull();
 
-  await page.goto("/student/dashboard");
-  await expect(page.getByText("Présence enregistrée")).toBeVisible();
+    await page.goto("/student/dashboard");
+    await expect(page.getByText("Présence enregistrée")).toBeVisible();
+  } finally {
+    await cleanupSessionFixture(sessionId);
+  }
 });
 
 test("un refus de caméra conserve le fallback manuel", async ({ page }) => {
@@ -63,20 +71,26 @@ test("le planning et l’historique restent lisibles sur mobile", async ({ page 
 
 test("une demande étudiante peut être acceptée par l’enseignant", async ({ page }) => {
   await page.goto("/student/history");
-  await page.getByRole("button").filter({ hasText: "2026-07-22" }).click();
+  await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
   await page.getByRole("button", { name: "Demander une correction" }).click();
   await page.getByPlaceholder("Décrivez ce qui doit être vérifié…").fill("J’étais présent dès le début de cette séance.");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(page.getByText("Demande de correction").last()).toBeVisible();
+  const fixture = await latestPendingCorrectionFixture();
+  try {
+    await selectDemoProfile(page, "Patrick Ilunga");
+    await page.goto(`/teacher/sessions/${fixture.sessionId}/attendances`);
+    await expect(page.getByRole("heading", { name: "Demandes de correction" })).toBeVisible();
+    await page.getByRole("button", { name: "Examiner" }).click();
+    await page.getByPlaceholder("Expliquez votre décision…").fill("Présence confirmée après vérification.");
+    await page.getByRole("button", { name: "Enregistrer la décision" }).click();
+    await expect(page.getByText("Correction acceptée et appliquée.")).toBeVisible();
 
-  await page.goto("/teacher/sessions/session-004/attendances");
-  await expect(page.getByRole("heading", { name: "Demandes de correction" })).toBeVisible();
-  await page.getByRole("button", { name: "Examiner" }).click();
-  await page.getByPlaceholder("Expliquez votre décision…").fill("Présence confirmée après vérification.");
-  await page.getByRole("button", { name: "Enregistrer la décision" }).click();
-  await expect(page.getByText("Correction acceptée et appliquée.")).toBeVisible();
-
-  await page.goto("/student/history");
-  await page.getByRole("button").filter({ hasText: "2026-07-22" }).click();
-  await expect(page.getByText("Acceptée")).toBeVisible();
+    await selectDemoProfile(page, "Sarah Mbuyi");
+    await page.goto("/student/history");
+    await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
+    await expect(page.getByText("Acceptée")).toBeVisible();
+  } finally {
+    await cleanupCorrectionFixture(fixture);
+  }
 });

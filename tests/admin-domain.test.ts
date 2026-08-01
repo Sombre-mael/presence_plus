@@ -93,7 +93,7 @@ describe("règles métier administrateur", () => {
   it("applique les périodes statistiques", () => {
     const state = freshAdminData();
     const sevenDays = getAttendanceTrend(state, { period: "7D", promotionId: "", courseId: "" });
-    const semester = getAttendanceTrend(state, { period: "SEMESTER", promotionId: "", courseId: "" });
+    const semester = getAttendanceTrend(state, { period: "180D", promotionId: "", courseId: "" });
 
     expect(sevenDays.length).toBeLessThan(semester.length);
     expect(semester.every((point) => point.rate >= 0 && point.rate <= 100)).toBe(true);

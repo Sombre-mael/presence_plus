@@ -27,10 +27,8 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
-const teacherId = "u2";
-
 export function TeacherSessionDetail({ id }: { id: string }) {
-  const { state, startSession, cancelSession, completeSession } = useAcademicData();
+  const { state, viewerId: teacherId, startSession, cancelSession, completeSession, isPending } = useAcademicData();
   const router = useRouter();
   const [reason, setReason] = useState("");
   const session = state.sessions.find((item) => item.id === id && item.teacherId === teacherId);
@@ -45,8 +43,8 @@ export function TeacherSessionDetail({ id }: { id: string }) {
   const present = records.filter((item) => ["PRESENT", "LATE"].includes(item.attendance!.status)).length;
   const rate = roster.length ? Math.round(present / roster.length * 100) : 0;
 
-  function start() {
-    const result = startSession(id, teacherId);
+  async function start() {
+    const result = await startSession(id, teacherId);
     if (result.ok) router.push(`/teacher/sessions/${id}/qr`);
   }
 
@@ -54,8 +52,8 @@ export function TeacherSessionDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <Button asChild variant="ghost" size="sm"><Link href="/teacher/sessions"><ArrowLeft /> Retour aux sessions</Link></Button>
       <PageHeader
-        title={session.courseName}
-        description={`${session.courseCode} · ${session.promotion}`}
+        title={session.name || session.courseName}
+        description={`${session.courseCode} · ${session.courseName} · ${session.promotion}`}
         action={<StatusBadge status={session.status} />}
       />
 
@@ -65,8 +63,8 @@ export function TeacherSessionDetail({ id }: { id: string }) {
           description="Vérifiez les informations puis ouvrez le pointage au début du cours."
           actions={<>
             <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/edit`}><Edit3 /> Modifier</Link></Button>
-            <CancelDialog reason={reason} setReason={setReason} onConfirm={() => cancelSession(id, reason)} />
-            <Dialog><DialogTrigger asChild><Button><Play /> Démarrer</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Ouvrir le pointage ?</DialogTitle><DialogDescription>Le QR code deviendra actif et les informations de la séance seront verrouillées.</DialogDescription></DialogHeader><DialogFooter><DialogClose asChild><Button variant="outline">Retour</Button></DialogClose><DialogClose asChild><Button onClick={start}>Démarrer la session</Button></DialogClose></DialogFooter></DialogContent></Dialog>
+            <CancelDialog reason={reason} setReason={setReason} pending={isPending(`session:${id}:cancel`)} onConfirm={() => cancelSession(id, reason)} />
+            <Dialog><DialogTrigger asChild><Button><Play /> Démarrer</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Ouvrir le pointage ?</DialogTitle><DialogDescription>Le QR code deviendra actif et les informations de la séance seront verrouillées.</DialogDescription></DialogHeader><DialogFooter><DialogClose asChild><Button variant="outline">Retour</Button></DialogClose><Button disabled={isPending(`session:${id}:start`)} onClick={start}>{isPending(`session:${id}:start`) ? "Démarrage..." : "Démarrer la session"}</Button></DialogFooter></DialogContent></Dialog>
           </>}
         />
       )}
@@ -78,7 +76,7 @@ export function TeacherSessionDetail({ id }: { id: string }) {
           actions={<>
             <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/attendances`}><UserCheck /> Présences</Link></Button>
             <Button asChild><Link href={`/teacher/sessions/${id}/qr`}><QrCode /> QR code</Link></Button>
-            <CloseDialog pending={pending} onConfirm={() => completeSession(id, teacherId)} />
+            <CloseDialog count={pending} mutating={isPending(`session:${id}:complete`)} onConfirm={() => completeSession(id, teacherId)} />
           </>}
         />
       )}
@@ -99,6 +97,7 @@ export function TeacherSessionDetail({ id }: { id: string }) {
           { icon: Users, label: "Promotion", value: session.promotion },
         ].map((item) => <div key={item.label} className="flex gap-3 bg-background p-4"><item.icon className="size-4 text-primary" /><div><p className="text-xs text-muted-foreground">{item.label}</p><p className="mt-1 text-sm font-medium">{item.value}</p></div></div>)}
       </section>
+      {session.description && <section className="border bg-background p-4"><h2 className="text-sm font-semibold">À propos de la séance</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{session.description}</p></section>}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="border bg-background">
@@ -124,10 +123,16 @@ function ActionBand({ title, description, actions }: { title: string; descriptio
   return <section className="flex flex-col gap-4 border bg-emerald-50/50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2">{actions}</div></section>;
 }
 
-function CancelDialog({ reason, setReason, onConfirm }: { reason: string; setReason: (value: string) => void; onConfirm: () => void }) {
-  return <Dialog><DialogTrigger asChild><Button variant="outline"><XCircle /> Annuler la séance</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Annuler cette séance ?</DialogTitle><DialogDescription>Elle restera visible dans l’historique. Le motif est facultatif.</DialogDescription></DialogHeader><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Motif de l’annulation" aria-label="Motif de l’annulation" /><DialogFooter><DialogClose asChild><Button variant="outline">Retour</Button></DialogClose><DialogClose asChild><Button variant="destructive" onClick={onConfirm}>Confirmer l’annulation</Button></DialogClose></DialogFooter></DialogContent></Dialog>;
+function CancelDialog({ reason, setReason, onConfirm, pending }: { reason: string; setReason: (value: string) => void; onConfirm: () => Promise<{ ok: boolean; message: string }>; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+  async function confirm() { const result = await onConfirm(); if (result.ok) { setOpen(false); setError(""); } else setError(result.message); }
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline"><XCircle /> Annuler la séance</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Annuler cette séance ?</DialogTitle><DialogDescription>Elle restera visible dans l’historique. Un motif est obligatoire pour informer les étudiants.</DialogDescription></DialogHeader><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Motif de l’annulation" aria-label="Motif de l’annulation" />{error && <p className="text-xs text-destructive">{error}</p>}<DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Retour</Button><Button variant="destructive" disabled={pending} onClick={confirm}>{pending ? "Annulation..." : "Confirmer l’annulation"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function CloseDialog({ pending, onConfirm }: { pending: number; onConfirm: () => void }) {
-  return <Dialog><DialogTrigger asChild><Button variant="destructive"><CheckCircle2 /> Clôturer</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Clôturer la session ?</DialogTitle><DialogDescription>{pending} étudiant(s) sans pointage seront automatiquement marqués absents. Cette action est définitive.</DialogDescription></DialogHeader><DialogFooter><DialogClose asChild><Button variant="outline">Continuer le pointage</Button></DialogClose><DialogClose asChild><Button variant="destructive" onClick={onConfirm}>Clôturer la session</Button></DialogClose></DialogFooter></DialogContent></Dialog>;
+function CloseDialog({ count, onConfirm, mutating }: { count: number; onConfirm: () => Promise<{ ok: boolean; message: string }>; mutating: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+  async function confirm() { const result = await onConfirm(); if (result.ok) { setOpen(false); setError(""); } else setError(result.message); }
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="destructive"><CheckCircle2 /> Clôturer</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Clôturer la session ?</DialogTitle><DialogDescription>{count} étudiant(s) sans pointage seront automatiquement marqués absents. Cette action est définitive.</DialogDescription></DialogHeader>{error && <p className="text-xs text-destructive">{error}</p>}<DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Continuer le pointage</Button><Button variant="destructive" disabled={mutating} onClick={confirm}>{mutating ? "Clôture..." : "Clôturer la session"}</Button></DialogFooter></DialogContent></Dialog>;
 }

@@ -27,10 +27,6 @@ import {
 } from "@/components/ui/select";
 import type { StatisticsPeriod } from "@/types/admin";
 
-function csvCell(value: string | number) {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
-
 export function StatisticsDashboard() {
   const { state, notify } = useAdminData();
   const [period, setPeriod] = useState<StatisticsPeriod>("30D");
@@ -45,48 +41,37 @@ export function StatisticsDashboard() {
     [courseId, period, promotionId, state],
   );
   const completed = sessions.filter((session) => session.status !== "SCHEDULED");
-  const expected = completed.reduce((total, session) => total + session.expectedCount, 0);
-  const checked = completed.reduce((total, session) => total + session.presentCount, 0);
+  const completedIds = new Set(completed.map((session) => session.id));
+  const completedRecords = state.attendances.filter((record) => completedIds.has(record.sessionId));
+  const excused = completedRecords.filter((record) => record.status === "EXCUSED").length;
+  const expected = Math.max(0, completed.reduce((total, session) => total + session.expectedCount, 0) - excused);
+  const checked = completedRecords.filter((record) => ["PRESENT", "LATE"].includes(record.status)).length;
   const attendanceRate = expected ? Math.round((checked / expected) * 100) : 0;
   const lateCount = trend.reduce((total, point) => total + point.late, 0);
 
   const comparison = state.promotions.map((promotion) => {
     const courseIds = state.courses.filter((course) => course.promotionId === promotion.id).map((course) => course.id);
     const promotionSessions = completed.filter((session) => courseIds.includes(session.courseId));
-    const promotionExpected = promotionSessions.reduce((total, session) => total + session.expectedCount, 0);
-    const promotionPresent = promotionSessions.reduce((total, session) => total + session.presentCount, 0);
+    const sessionIds = new Set(promotionSessions.map((session) => session.id));
+    const records = state.attendances.filter((record) => sessionIds.has(record.sessionId));
+    const promotionExpected = Math.max(0, promotionSessions.reduce((total, session) => total + session.expectedCount, 0) - records.filter((record) => record.status === "EXCUSED").length);
+    const promotionPresent = records.filter((record) => ["PRESENT", "LATE"].includes(record.status)).length;
     return { name: promotion.name, taux: promotionExpected ? Math.round((promotionPresent / promotionExpected) * 100) : 0 };
   }).filter((item) => item.taux > 0);
 
   function exportCsv() {
-    const rows = [
-      ["Date", "Cours", "Promotion", "Enseignant", "Statut", "Présents", "Attendus", "Taux"],
-      ...sessions.map((session) => [
-        session.date,
-        `${session.courseCode} - ${session.courseName}`,
-        session.promotion,
-        session.teacher,
-        session.status,
-        session.presentCount,
-        session.expectedCount,
-        session.expectedCount ? `${Math.round((session.presentCount / session.expectedCount) * 100)}%` : "0%",
-      ]),
-    ];
-    const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `statistiques-presence-${period.toLocaleLowerCase("fr")}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const params = new URLSearchParams({ kind: "statistics", period });
+    if (promotionId) params.set("promotionId", promotionId);
+    if (courseId) params.set("courseId", courseId);
+    window.location.assign(`/api/exports?${params}`);
     notify("Export CSV généré selon les filtres actifs.");
   }
 
   const metrics = [
     { label: "Présence moyenne", value: `${attendanceRate}%`, detail: `${checked} pointages confirmés`, icon: TrendingUp },
-    { label: "Sessions analysées", value: completed.length, detail: `période ${period === "7D" ? "7 jours" : period === "30D" ? "30 jours" : "semestre"}`, icon: CalendarCheck },
+    { label: "Sessions analysées", value: completed.length, detail: `période ${period === "7D" ? "7 jours" : period === "30D" ? "30 jours" : "180 jours"}`, icon: CalendarCheck },
     { label: "Participations attendues", value: expected, detail: "sur les séances terminées", icon: Users },
-    { label: "Retards estimés", value: lateCount, detail: "selon les pointages disponibles", icon: ClockAlert },
+    { label: "Retards confirmés", value: lateCount, detail: "issus des pointages Neon", icon: ClockAlert },
   ];
 
   return (
@@ -96,7 +81,7 @@ export function StatisticsDashboard() {
       <div className="grid gap-3 border bg-background p-4 md:grid-cols-3">
         <Select value={period} onValueChange={(value) => setPeriod(value as StatisticsPeriod)}>
           <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="7D">7 derniers jours</SelectItem><SelectItem value="30D">30 derniers jours</SelectItem><SelectItem value="SEMESTER">Semestre</SelectItem></SelectContent>
+          <SelectContent><SelectItem value="7D">7 derniers jours</SelectItem><SelectItem value="30D">30 derniers jours</SelectItem><SelectItem value="180D">180 derniers jours</SelectItem></SelectContent>
         </Select>
         <Select value={promotionId || "ALL"} onValueChange={(value) => { setPromotionId(value === "ALL" ? "" : value); setCourseId(""); }}>
           <SelectTrigger className="w-full"><SelectValue placeholder="Toutes les promotions" /></SelectTrigger>

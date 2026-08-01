@@ -17,6 +17,7 @@ import {
   Users,
   PanelLeftClose,
   PanelLeftOpen,
+  ScrollText,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { Role } from "@/types";
@@ -45,6 +46,7 @@ const navigation: Record<Role, NavItem[]> = {
     { href: "/admin/courses", label: "Cours", icon: BookOpen },
     { href: "/admin/sessions", label: "Sessions", icon: CalendarCheck },
     { href: "/admin/statistics", label: "Statistiques", icon: BarChart3 },
+    { href: "/admin/audit", label: "Journal d’activité", icon: ScrollText },
   ],
   TEACHER: [
     { href: "/teacher/dashboard", label: "Tableau de bord", icon: LayoutDashboard },

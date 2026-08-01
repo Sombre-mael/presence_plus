@@ -5,22 +5,25 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CalendarCheck, Clock3, MapPin } from "lucide-react";
 import type { TeacherSessionInput } from "@/types/admin";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
+import { currentAcademicDate } from "@/lib/academic-calendar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-const teacherId = "u2";
+import { Textarea } from "@/components/ui/textarea";
 
 export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
-  const { state, createSession, updateSession } = useAcademicData();
+  const { state, viewerId: teacherId, createSession, updateSession, isPending } = useAcademicData();
   const router = useRouter();
   const existing = state.sessions.find((session) => session.id === sessionId);
-  const courses = state.courses.filter((course) => course.teacherId === teacherId);
+  const saving = isPending(sessionId ? `session:${sessionId}:update` : "session:create");
+  const courses = state.courses.filter((course) => course.teacherId === teacherId && course.active !== false);
   const [input, setInput] = useState<TeacherSessionInput>({
+    name: existing?.name ?? "",
+    description: existing?.description ?? "",
     courseId: existing?.courseId ?? courses[0]?.id ?? "",
-    date: existing?.date ?? "2026-07-28",
+    date: existing?.date ?? currentAcademicDate(),
     startTime: existing?.startTime ?? "08:00",
     endTime: existing?.endTime ?? "10:00",
     room: existing?.room ?? "",
@@ -28,7 +31,8 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
-  const course = useMemo(() => courses.find((item) => item.id === input.courseId), [courses, input.courseId]);
+  const selectedCourseId = input.courseId || courses[0]?.id || "";
+  const course = useMemo(() => courses.find((item) => item.id === selectedCourseId), [courses, selectedCourseId]);
   const promotion = state.promotions.find((item) => item.id === course?.promotionId);
 
   function update<K extends keyof TeacherSessionInput>(key: K, value: TeacherSessionInput[K]) {
@@ -36,11 +40,12 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
     setErrors((current) => ({ ...current, [key]: "" }));
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const result = sessionId
-      ? updateSession(sessionId, input, teacherId)
-      : createSession(input, teacherId);
+    const normalizedInput = { ...input, courseId: selectedCourseId };
+    const result = await (sessionId
+      ? updateSession(sessionId, normalizedInput, teacherId)
+      : createSession(normalizedInput, teacherId));
     if (!result.ok) {
       setMessage(result.message);
       setErrors(result.fieldErrors ?? {});
@@ -59,8 +64,14 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
       <div className="border bg-background">
         <div className="border-b p-5"><h2 className="font-semibold">Informations de la séance</h2><p className="mt-1 text-xs text-muted-foreground">Le cours détermine automatiquement la promotion concernée.</p></div>
         <div className="grid gap-5 p-5 sm:grid-cols-2">
+          <Field label="Titre de la séance" error={errors.name} className="sm:col-span-2">
+            <Input aria-label="Titre de la séance" value={input.name ?? ""} onChange={(event) => update("name", event.target.value)} placeholder={course ? `${course.name} - séance` : "Ex. Révision du chapitre 3"} />
+          </Field>
+          <Field label="Description" error={errors.description} className="sm:col-span-2">
+            <Textarea aria-label="Description" value={input.description ?? ""} onChange={(event) => update("description", event.target.value)} placeholder="Objectif ou consignes utiles (facultatif)" />
+          </Field>
           <Field label="Cours" error={errors.courseId} className="sm:col-span-2">
-            <Select value={input.courseId} onValueChange={(value) => update("courseId", value)}>
+            <Select value={selectedCourseId} onValueChange={(value) => update("courseId", value)}>
               <SelectTrigger className="w-full" aria-label="Cours"><SelectValue placeholder="Sélectionner un cours" /></SelectTrigger>
               <SelectContent>{courses.map((item) => <SelectItem key={item.id} value={item.id}>{item.code} · {item.name}</SelectItem>)}</SelectContent>
             </Select>
@@ -87,14 +98,14 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
         </div>
         <div className="flex flex-col-reverse gap-2 border-t p-4 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft /> Annuler</Button>
-          <Button type="submit"><CalendarCheck /> {sessionId ? "Enregistrer les modifications" : "Planifier la session"}</Button>
+          <Button type="submit" disabled={saving || !selectedCourseId}><CalendarCheck /> {saving ? "Enregistrement..." : sessionId ? "Enregistrer les modifications" : "Planifier la session"}</Button>
         </div>
       </div>
 
       <aside className="h-fit border bg-muted/30 p-5">
         <h2 className="font-semibold">Aperçu</h2>
         <div className="mt-5 space-y-4 text-sm">
-          <Summary icon={CalendarCheck} label="Cours" value={course ? `${course.code} · ${course.name}` : "À sélectionner"} />
+          <Summary icon={CalendarCheck} label="Séance" value={input.name?.trim() || (course ? `${course.code} · ${course.name}` : "À sélectionner")} />
           <Summary icon={Clock3} label="Horaire" value={`${input.date || "Date"} · ${input.startTime}-${input.endTime}`} />
           <Summary icon={MapPin} label="Lieu" value={input.room || "Salle à définir"} />
         </div>

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
-import { CalendarDays, List, Plus, Search } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, List, Plus, Search } from "lucide-react";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -11,16 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-const teacherId = "u2";
+import { academicMonth, academicMonthGrid, formatAcademicMonth, shiftAcademicMonth } from "@/lib/academic-calendar";
 
 export function SessionsWorkspace() {
-  const { state } = useAcademicData();
+  const { state, viewerId: teacherId } = useAcademicData();
   const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [courseId, setCourseId] = useState("ALL");
   const [date, setDate] = useState("");
+  const [month, setMonth] = useState(() => academicMonth());
 
   const courses = state.courses.filter((course) => course.teacherId === teacherId);
   const sessions = useMemo(() => {
@@ -33,11 +33,9 @@ export function SessionsWorkspace() {
         (courseId === "ALL" || session.courseId === courseId) &&
         (!date || session.date === date))
       .sort((a, b) => `${b.date}${b.startTime}`.localeCompare(`${a.date}${a.startTime}`));
-  }, [courseId, date, query, state.sessions, status]);
+  }, [courseId, date, query, state.sessions, status, teacherId]);
 
-  const calendarDate = new Date("2026-07-01T12:00:00");
-  const firstOffset = (calendarDate.getDay() + 6) % 7;
-  const days = Array.from({ length: 35 }, (_, index) => index - firstOffset + 1);
+  const days = academicMonthGrid(month);
 
   return (
     <div>
@@ -97,16 +95,16 @@ export function SessionsWorkspace() {
 
         <TabsContent value="calendar">
           <div className="border bg-background">
-            <div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">Juillet 2026</h2><p className="text-xs text-muted-foreground">Sélectionnez une séance pour l’ouvrir.</p></div><CalendarDays className="size-5 text-primary" /></div>
+            <div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">{formatAcademicMonth(month)}</h2><p className="text-xs text-muted-foreground">Sélectionnez une séance pour l’ouvrir.</p></div><div className="flex gap-1"><Button variant="outline" size="icon-sm" onClick={() => setMonth((value) => shiftAcademicMonth(value, -1))} aria-label="Mois précédent"><ChevronLeft /></Button><Button variant="outline" size="icon-sm" onClick={() => setMonth((value) => shiftAcademicMonth(value, 1))} aria-label="Mois suivant"><ChevronRight /></Button></div></div>
             <div className="grid grid-cols-7 border-b bg-muted/40">
               {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => <div key={day} className="p-2 text-center text-[11px] font-medium text-muted-foreground">{day}</div>)}
             </div>
             <div className="grid grid-cols-7">
               {days.map((day, index) => {
-                const daySessions = day > 0 ? sessions.filter((session) => Number(session.date.slice(-2)) === day) : [];
+                const daySessions = day ? sessions.filter((session) => session.date === day) : [];
                 return (
-                  <div key={`${day}-${index}`} className="min-h-24 border-b border-r p-1.5 sm:min-h-28 sm:p-2">
-                    {day > 0 && day <= 31 && <><span className="metric-number text-xs text-muted-foreground">{day}</span><div className="mt-1 space-y-1">{daySessions.map((session) => <Link key={session.id} href={`/teacher/sessions/${session.id}`} className="block truncate bg-primary/8 px-1.5 py-1 text-[10px] font-medium text-primary sm:text-xs">{session.startTime} {session.courseCode}</Link>)}</div></>}
+                  <div key={`${day ?? "empty"}-${index}`} className="min-h-24 border-b border-r p-1.5 sm:min-h-28 sm:p-2">
+                    {day && <><span className="metric-number text-xs text-muted-foreground">{Number(day.slice(-2))}</span><div className="mt-1 space-y-1">{daySessions.map((session) => <Link key={session.id} href={`/teacher/sessions/${session.id}`} className="block truncate bg-primary/8 px-1.5 py-1 text-[10px] font-medium text-primary sm:text-xs">{session.startTime} {session.courseCode}</Link>)}</div></>}
                   </div>
                 );
               })}

@@ -33,6 +33,8 @@ export interface Course {
 
 export interface SessionSummary {
   id: string;
+  name?: string;
+  description?: string;
   courseId: string;
   courseCode: string;
   courseName: string;
@@ -69,6 +71,9 @@ export interface AttendanceRecord {
   correctionReason?: string;
   correctedAt?: string;
   correctedBy?: string;
+  correctedByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DashboardStat {

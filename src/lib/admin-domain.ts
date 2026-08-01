@@ -11,6 +11,7 @@ import type {
   StatisticsFilters,
 } from "@/types/admin";
 import { isStoredAcademicData } from "./academic-domain";
+import { addAcademicDays, currentAcademicDate } from "./academic-calendar";
 
 const requiredText = z.string().trim().min(2, "Ce champ doit contenir au moins 2 caractères.");
 
@@ -34,6 +35,7 @@ export const adminPromotionSchema = z.object({
   name: requiredText,
   department: requiredText,
   academicYear: z.string().regex(/^\d{4}-\d{4}$/, "Utilisez le format 2025-2026."),
+  description: z.string().trim().max(500, "Maximum 500 caractères.").optional(),
 });
 
 export const adminCourseSchema = z.object({
@@ -42,6 +44,8 @@ export const adminCourseSchema = z.object({
   teacherId: z.string().min(1, "Sélectionnez un enseignant."),
   promotionId: z.string().min(1, "Sélectionnez une promotion."),
   weeklyHours: z.coerce.number().int().min(1, "Minimum 1 heure.").max(20, "Maximum 20 heures."),
+  description: z.string().trim().max(500, "Maximum 500 caractères.").optional(),
+  active: z.boolean().optional(),
 });
 
 function fieldErrors(error: z.ZodError) {
@@ -105,6 +109,9 @@ export function validateCourse(
   if (state.courses.some((course) => course.id !== editingId && course.code.toLocaleUpperCase("fr") === input.code.trim().toLocaleUpperCase("fr"))) {
     return { ok: false, message: "Ce code de cours est déjà utilisé.", fieldErrors: { code: "Code déjà utilisé." } };
   }
+  if (state.courses.some((course) => course.id !== editingId && course.name.toLocaleLowerCase("fr") === input.name.trim().toLocaleLowerCase("fr"))) {
+    return { ok: false, message: "Cet intitulé de cours est déjà utilisé.", fieldErrors: { name: "Intitulé déjà utilisé." } };
+  }
   if (!state.users.some((user) => user.id === input.teacherId && user.role === "TEACHER" && user.status === "ACTIVE")) {
     return { ok: false, message: "L’enseignant sélectionné est indisponible.", fieldErrors: { teacherId: "Enseignant indisponible." } };
   }
@@ -153,7 +160,7 @@ export function getAdminDashboardStats(state: AdminDataState): AdminDashboardSta
     activeUsers: state.users.filter((user) => user.status === "ACTIVE").length,
     totalUsers: state.users.length,
     attendanceRate: expected ? Math.round((present / expected) * 100) : 0,
-    sessionsToday: state.sessions.filter((session) => session.date === "2026-07-25").length,
+    sessionsToday: state.sessions.filter((session) => session.date === currentAcademicDate()).length,
     activeSessions: state.sessions.filter((session) => session.status === "ACTIVE").length,
     promotionCount: state.promotions.length,
     studentCount: state.users.filter((user) => user.role === "STUDENT").length,
@@ -205,14 +212,12 @@ function periodDays(period: StatisticsFilters["period"]) {
 }
 
 export function getFilteredSessions(state: AdminDataState, filters: StatisticsFilters) {
-  const anchor = new Date("2026-07-25T12:00:00");
-  const minimum = new Date(anchor);
-  minimum.setDate(anchor.getDate() - periodDays(filters.period));
+  const minimum = addAcademicDays(currentAcademicDate(), -periodDays(filters.period));
   const promotion = state.promotions.find((item) => item.id === filters.promotionId);
   return state.sessions.filter((session) => {
     const course = state.courses.find((item) => item.id === session.courseId);
     return (
-      new Date(`${session.date}T12:00:00`) >= minimum &&
+      session.date >= minimum &&
       (!filters.courseId || session.courseId === filters.courseId) &&
       (!filters.promotionId || course?.promotionId === filters.promotionId || session.promotion === promotion?.name)
     );
@@ -224,16 +229,19 @@ export function getAttendanceTrend(state: AdminDataState, filters: StatisticsFil
     .filter((session) => ["ACTIVE", "COMPLETED"].includes(session.status))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((session) => {
-      const late = Math.max(1, Math.round(session.presentCount * 0.08));
-      const present = Math.max(0, session.presentCount - late);
-      const absent = Math.max(0, session.expectedCount - session.presentCount);
+      const records = state.attendances.filter((record) => record.sessionId === session.id);
+      const late = records.filter((record) => record.status === "LATE").length;
+      const present = records.filter((record) => record.status === "PRESENT").length;
+      const absent = records.filter((record) => record.status === "ABSENT").length;
+      const excused = records.filter((record) => record.status === "EXCUSED").length;
+      const eligible = Math.max(0, session.expectedCount - excused);
       return {
         label: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(new Date(`${session.date}T12:00:00`)),
         date: session.date,
         present,
         late,
         absent,
-        rate: session.expectedCount ? Math.round((session.presentCount / session.expectedCount) * 100) : 0,
+        rate: eligible ? Math.round(((present + late) / eligible) * 100) : 0,
       };
     });
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Clock3, MapPin, Search, UserCheck, Users } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -26,15 +27,32 @@ import {
 } from "@/components/ui/table";
 
 export function SessionsManager({ initialDate = "" }: { initialDate?: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { state } = useAdminData();
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("ALL");
-  const [promotionId, setPromotionId] = useState("ALL");
-  const [courseId, setCourseId] = useState("ALL");
-  const [teacherId, setTeacherId] = useState("ALL");
-  const [date, setDate] = useState(initialDate);
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [status, setStatus] = useState(searchParams.get("status") ?? "ALL");
+  const [promotionId, setPromotionId] = useState(searchParams.get("promotion") ?? "ALL");
+  const [courseId, setCourseId] = useState(searchParams.get("course") ?? "ALL");
+  const [teacherId, setTeacherId] = useState(searchParams.get("teacher") ?? "ALL");
+  const [date, setDate] = useState(searchParams.get("date") ?? initialDate);
 
   const teachers = state.users.filter((user) => user.role === "TEACHER");
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const values = {
+      q: query,
+      status: status === "ALL" ? "" : status,
+      promotion: promotionId === "ALL" ? "" : promotionId,
+      course: courseId === "ALL" ? "" : courseId,
+      teacher: teacherId === "ALL" ? "" : teacherId,
+      date,
+    };
+    Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
+    const next = params.toString();
+    if (next !== searchParams.toString()) router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [courseId, date, pathname, promotionId, query, router, searchParams, status, teacherId]);
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("fr");
     return state.sessions.filter((session) => {
@@ -132,9 +150,9 @@ export function AdminSessionDetail({ id }: { id: string }) {
   }
 
   const records = state.attendances.filter((attendance) => attendance.sessionId === id);
-  const lateCount = Math.max(records.filter((record) => record.status === "LATE").length, Math.round(session.presentCount * 0.08));
-  const presentCount = Math.max(0, session.presentCount - lateCount);
-  const absentCount = Math.max(0, session.expectedCount - session.presentCount);
+  const lateCount = records.filter((record) => record.status === "LATE").length;
+  const presentCount = records.filter((record) => record.status === "PRESENT").length;
+  const absentCount = records.filter((record) => record.status === "ABSENT").length;
   const rate = session.expectedCount ? Math.round((session.presentCount / session.expectedCount) * 100) : 0;
 
   return (

@@ -16,10 +16,8 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { getTeacherNotifications, getTeacherStats } from "@/lib/academic-domain";
 
-const teacherId = "u2";
-
 export function TeacherDashboard() {
-  const { state } = useAcademicData();
+  const { state, viewerId: teacherId } = useAcademicData();
   const reduceMotion = useReducedMotion();
   const teacherSessions = state.sessions
     .filter((session) => session.teacherId === teacherId)

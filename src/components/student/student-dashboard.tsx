@@ -19,10 +19,8 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { getStudentHistory, getStudentSessions, getStudentStats } from "@/lib/student-domain";
 
-const studentId = "u4";
-
 export function StudentDashboard() {
-  const { state } = useAcademicData();
+  const { state, viewerId: studentId } = useAcademicData();
   const reduceMotion = useReducedMotion();
   const stats = getStudentStats(state, studentId);
   const sessions = getStudentSessions(state, studentId);

@@ -7,8 +7,11 @@ import type {
   MutationResult,
   TeacherSessionInput,
 } from "@/types/admin";
+import { academicMonth, currentAcademicDate } from "./academic-calendar";
 
 const sessionSchema = z.object({
+  name: z.string().trim().max(120, "Maximum 120 caractères.").optional(),
+  description: z.string().trim().max(500, "Maximum 500 caractères.").optional(),
   courseId: z.string().min(1, "Sélectionnez un cours."),
   date: z.iso.date("Sélectionnez une date valide."),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Heure de début invalide."),
@@ -52,7 +55,7 @@ export function validateTeacherSession(
     };
   }
   const course = state.courses.find(
-    (item) => item.id === input.courseId && item.teacherId === teacherId,
+    (item) => item.id === input.courseId && item.teacherId === teacherId && item.active !== false,
   );
   if (!course) {
     return {
@@ -84,6 +87,10 @@ export function validateTeacherSession(
         ? "Cette promotion a déjà un cours sur ce créneau."
         : "Vous avez déjà une session sur ce créneau.";
     return { ok: false, message: reason, fieldErrors: { startTime: reason } };
+  }
+
+  if (!editingId && input.date < currentAcademicDate()) {
+    return { ok: false, message: "Une nouvelle session ne peut pas être planifiée dans le passé.", fieldErrors: { date: "Choisissez aujourd'hui ou une date future." } };
   }
 
   return {
@@ -195,7 +202,7 @@ export function getTeacherNotifications(
         href: `/teacher/sessions/${session.id}`,
       });
     }
-    if (session.status === "SCHEDULED" && session.date === "2026-07-25") {
+    if (session.status === "SCHEDULED" && session.date === currentAcademicDate()) {
       notifications.push({
         id: `scheduled-${session.id}`,
         severity: "LOW",
@@ -225,7 +232,7 @@ export function getTeacherStats(state: AcademicDataState, teacherId: string) {
       sessions.some((session) => session.id === record.sessionId),
   ).length;
   return {
-    sessionsThisMonth: sessions.filter((session) => session.date.startsWith("2026-07")).length,
+    sessionsThisMonth: sessions.filter((session) => session.date.startsWith(academicMonth())).length,
     attendanceRate: expected ? Math.round((present / expected) * 100) : 0,
     lateCount: late,
     activeCount: sessions.filter((session) => session.status === "ACTIVE").length,
@@ -271,6 +278,7 @@ export function migrateLegacyAdminData(value: unknown): AcademicDataState | null
       ...(legacy as unknown as Omit<AcademicDataState, "version" | "correctionRequests">),
       version: 3,
       correctionRequests: [],
+      auditLogs: [],
     };
   }
   if (
@@ -311,5 +319,6 @@ export function migrateLegacyAdminData(value: unknown): AcademicDataState | null
       source: item.source ?? "QR",
     })),
     correctionRequests: [],
+    auditLogs: [],
   };
 }

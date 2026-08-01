@@ -7,8 +7,7 @@ import type {
   StudentCheckInInput,
 } from "@/types/student";
 import { createQrToken, deriveAttendanceStatus } from "./academic-domain";
-
-const DEMO_TODAY = "2026-07-25";
+import { currentAcademicDate } from "./academic-calendar";
 
 function sessionTeacherId(state: AcademicDataState, courseId: string) {
   return state.courses.find((course) => course.id === courseId)?.teacherId;
@@ -27,7 +26,13 @@ export function getStudentSessions(state: AcademicDataState, studentId: string) 
 }
 
 export function getStudentHistory(state: AcademicDataState, studentId: string) {
-  return getStudentSessions(state, studentId)
+  const currentSessionIds = new Set(getStudentSessions(state, studentId).map((session) => session.id));
+  const historicalSessionIds = new Set([
+    ...state.attendances.filter((record) => record.studentId === studentId).map((record) => record.sessionId),
+    ...state.correctionRequests.filter((request) => request.studentId === studentId).map((request) => request.sessionId),
+  ]);
+  return state.sessions
+    .filter((session) => currentSessionIds.has(session.id) || historicalSessionIds.has(session.id))
     .filter((session) => session.status === "COMPLETED")
     .map((session) => ({
       session,
@@ -217,6 +222,12 @@ export function validateCorrectionRequest(
       fieldErrors: { reason: "Motif trop court." },
     };
   }
+  const attendance = state.attendances.find(
+    (record) => record.sessionId === input.sessionId && record.studentId === input.studentId,
+  );
+  if (attendance?.status === input.requestedStatus) {
+    return { ok: false, message: "Le statut demandé est déjà celui enregistré." };
+  }
   if (state.correctionRequests.some((request) =>
     request.sessionId === input.sessionId &&
     request.studentId === input.studentId &&
@@ -244,7 +255,7 @@ export function getStudentNotifications(
         detail: `${session.courseCode} accepte les présences maintenant.`,
         href: "/student/check-in",
       });
-    } else if (session.status === "SCHEDULED" && session.date === DEMO_TODAY) {
+    } else if (session.status === "SCHEDULED" && session.date === currentAcademicDate()) {
       notifications.push({
         id: `upcoming-${session.id}`,
         severity: "LOW",

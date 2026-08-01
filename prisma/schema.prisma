@@ -8,23 +8,26 @@ datasource db {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  matricule   String @unique
-  name        String
-  email       String       @unique
-  passwordHash    String
-  role        Role
-  status      UserStatus
-  createdAt   DateTime     @default(now())
-  promotionId String?
-  updatedAt   DateTime     @updatedAt
-  attendances Attendance[]
-  auditLogs   AuditLog[]
-  courses     Course[]     @relation("TeacherCourses")
-  sessions    Session[]    @relation("TeacherSessions")
-  correctionRequests AttendanceCorrectionRequest[] @relation("StudentCorrections")
-  handledCorrections AttendanceCorrectionRequest[] @relation("TeacherCorrections")
-  promotion   Promotion?   @relation(fields: [promotionId], references: [id])
+  id                   String                        @id @default(cuid())
+  matricule            String?                       @unique
+  name                 String
+  email                String                        @unique
+  passwordHash         String
+  role                 Role
+  status               UserStatus
+  createdAt            DateTime                      @default(now())
+  promotionId          String?
+  updatedAt            DateTime                      @updatedAt
+  attendances          Attendance[]                  @relation("StudentAttendances")
+  correctedAttendances Attendance[]                  @relation("AttendanceCorrector")
+  auditLogs            AuditLog[]
+  courses              Course[]                      @relation("TeacherCourses")
+  sessions             Session[]                     @relation("TeacherSessions")
+  correctionRequests   AttendanceCorrectionRequest[] @relation("StudentCorrections")
+  handledCorrections   AttendanceCorrectionRequest[] @relation("TeacherCorrections")
+  resolvedCorrections  AttendanceCorrectionRequest[] @relation("CorrectionResolver")
+  promotion            Promotion?                    @relation(fields: [promotionId], references: [id])
+
   @@index([role])
   @@index([status])
 }
@@ -43,45 +46,47 @@ model Course {
   promotion   Promotion @relation(fields: [promotionId], references: [id])
   teacher     User      @relation("TeacherCourses", fields: [teacherId], references: [id])
   sessions    Session[]
+
   @@index([promotionId])
   @@index([teacherId])
 }
 
 model Promotion {
-  id          String   @id @default(cuid())
-  name        String @unique
-  description String?
-  department  String
+  id           String    @id @default(cuid())
+  name         String    @unique
+  description  String?
+  department   String
   academicYear String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  sessions Session[]
-  courses     Course[]
-  users       User[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  courses      Course[]
+  users        User[]
 }
 
 model Session {
-  id          String        @id @default(cuid())
-  name        String
-  description String?
-  courseId    String
-  status      SessionStatus @default(ACTIVE)
-  createdAt   DateTime      @default(now())
-  scheduledStartAt DateTime
-  scheduledEndAt   DateTime
-  room      String
+  id                   String                        @id @default(cuid())
+  name                 String
+  description          String?
+  courseId             String
+  status               SessionStatus                 @default(SCHEDULED)
+  createdAt            DateTime                      @default(now())
+  scheduledStartAt     DateTime
+  scheduledEndAt       DateTime
+  room                 String
   lateThresholdMinutes Int
-  startedAt   DateTime?
-  completedAt DateTime?
-  cancelledAt DateTime?
-  cancellationReason String?
-  teacherId   String
-  attendances Attendance[]
-  promotionId String
-  promotion Promotion @relation(fields:[promotionId], references:[id])
-  correctionRequests AttendanceCorrectionRequest[]
-  courses     Course        @relation(fields: [courseId], references: [id])
-  teacher     User          @relation("TeacherSessions", fields: [teacherId], references: [id])
+  startedAt            DateTime?
+  completedAt          DateTime?
+  cancelledAt          DateTime?
+  cancellationReason   String?
+  teacherId            String
+  attendances          Attendance[]
+  promotionId          String
+  promotion            Promotion                     @relation(fields: [promotionId], references: [id])
+  correctionRequests   AttendanceCorrectionRequest[]
+  courses              Course                        @relation(fields: [courseId], references: [id])
+  teacher              User                          @relation("TeacherSessions", fields: [teacherId], references: [id])
+
   @@index([teacherId])
   @@index([promotionId])
   @@index([status])
@@ -89,62 +94,72 @@ model Session {
 }
 
 model Attendance {
-  id        String           @id @default(cuid())
-  studentId String
-  sessionId String
-  status    AttendanceStatus
-  source    AttendanceSource
-  checkedInAt DateTime?
-  note      String?
+  id               String                        @id @default(cuid())
+  studentId        String
+  sessionId        String
+  status           AttendanceStatus
+  source           AttendanceSource
+  checkedInAt      DateTime?
+  note             String?
   correctionReason String?
-  correctedAt DateTime?
-  correctedBy String?
-  updatedAt DateTime         @updatedAt
-  createdAt DateTime         @default(now())
-  corrections AttendanceCorrectionRequest[]
-  session   Session          @relation(fields: [sessionId], references: [id])
-  student   User             @relation(fields: [studentId], references: [id])
+  correctedAt      DateTime?
+  correctedById    String?
+  updatedAt        DateTime                      @updatedAt
+  createdAt        DateTime                      @default(now())
+  corrections      AttendanceCorrectionRequest[]
+  session          Session                       @relation(fields: [sessionId], references: [id])
+  student          User                          @relation("StudentAttendances", fields: [studentId], references: [id])
+  correctedBy      User?                         @relation("AttendanceCorrector", fields: [correctedById], references: [id], onDelete: SetNull)
 
   @@unique([studentId, sessionId])
+  @@index([studentId])
+  @@index([sessionId])
   @@index([status])
+  @@index([correctedById])
 }
+
 model AttendanceCorrectionRequest {
-  id                 String   @id @default(cuid())
-  sessionId          String
-  attendanceId       String?
-  studentId          String
-  teacherId          String
-  requestedStatus    AttendanceStatus
-  reason             String
-  status             CorrectionRequestStatus @default(PENDING)
-  decisionReason     String?
-  resolvedStatus     AttendanceStatus?
-  resolvedBy         String?
-  resolvedAt         DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  session            Session @relation(fields: [sessionId], references: [id])
-  attendance         Attendance? @relation(fields: [attendanceId], references: [id])
-  student            User @relation("StudentCorrections", fields: [studentId], references: [id])
-  teacher            User @relation("TeacherCorrections", fields: [teacherId], references: [id])
+  id              String                  @id @default(cuid())
+  sessionId       String
+  attendanceId    String?
+  studentId       String
+  teacherId       String
+  requestedStatus AttendanceStatus
+  reason          String
+  status          CorrectionRequestStatus @default(PENDING)
+  decisionReason  String?
+  resolvedStatus  AttendanceStatus?
+  resolvedById    String?
+  resolvedAt      DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  session         Session                 @relation(fields: [sessionId], references: [id])
+  attendance      Attendance?             @relation(fields: [attendanceId], references: [id])
+  student         User                    @relation("StudentCorrections", fields: [studentId], references: [id])
+  teacher         User                    @relation("TeacherCorrections", fields: [teacherId], references: [id])
+  resolvedBy      User?                   @relation("CorrectionResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
   @@index([status])
+  @@index([sessionId])
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([resolvedById])
+  @@index([studentId, sessionId, status])
 }
 
 model AuditLog {
-  
-  id String @id @default(cuid())
-  actorId String
-  action String
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
   entityType String
-  entityId String
-  metadata Json?
-  createdAt DateTime @default(now())
-  actor User @relation(fields:[actorId], references:[id])
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User     @relation(fields: [actorId], references: [id])
+
   @@index([actorId])
   @@index([createdAt])
-
 }
-
 
 enum Role {
   STUDENT
@@ -177,6 +192,7 @@ enum CorrectionRequestStatus {
   REJECTED
   CANCELLED
 }
+
 enum AttendanceSource {
   QR
   STUDENT_CODE

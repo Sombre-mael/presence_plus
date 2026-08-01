@@ -19,11 +19,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const teacherId = "u2";
 type FilterStatus = AttendanceStatus | "PENDING" | "ALL";
 
 export function AttendanceManager({ sessionId, highlightedRequestId }: { sessionId: string; highlightedRequestId?: string }) {
-  const { state } = useAcademicData();
+  const { state, viewerId: teacherId } = useAcademicData();
   const session = state.sessions.find((item) => item.id === sessionId && item.teacherId === teacherId);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FilterStatus>("ALL");
@@ -42,32 +41,14 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
   }, [query, roster, status]);
 
   if (!session) return <p className="py-16 text-center text-sm text-muted-foreground">Session introuvable.</p>;
-  const currentSession = session;
   const canEdit = ["ACTIVE", "COMPLETED"].includes(session.status);
   const pendingRequests = state.correctionRequests
     .filter((request) => request.sessionId === sessionId && request.status === "PENDING")
     .sort((a, b) => Number(b.id === highlightedRequestId) - Number(a.id === highlightedRequestId));
 
   function exportCsv() {
-    const lines = [
-      ["Étudiant", "Matricule", "Statut", "Heure", "Source", "Note", "Motif de correction"],
-      ...filtered.map(({ student, attendance }) => [
-        student.name,
-        student.matricule ?? "",
-        attendance?.status ?? "EN ATTENTE",
-        attendance?.checkedInAt ?? "",
-        attendance?.source ?? "",
-        attendance?.note ?? "",
-        attendance?.correctionReason ?? "",
-      ]),
-    ];
-    const csv = lines.map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `presences-${currentSession.courseCode}-${currentSession.date}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const params = new URLSearchParams({ sessionId, status });
+    window.location.assign(`/api/exports?${params}`);
   }
 
   return (
@@ -115,7 +96,7 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
 }
 
 function CorrectionDecisionDialog({ request }: { request: AttendanceCorrectionRequest }) {
-  const { state, resolveCorrectionRequest } = useAcademicData();
+  const { state, viewerId: teacherId, resolveCorrectionRequest, isPending } = useAcademicData();
   const session = state.sessions.find((item) => item.id === request.sessionId)!;
   const [open, setOpen] = useState(false);
   const [decision, setDecision] = useState<"APPROVE" | "REJECT">("APPROVE");
@@ -124,8 +105,8 @@ function CorrectionDecisionDialog({ request }: { request: AttendanceCorrectionRe
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
 
-  function submit() {
-    const result = resolveCorrectionRequest({
+  async function submit() {
+    const result = await resolveCorrectionRequest({
       requestId: request.id,
       teacherId,
       decision,
@@ -150,14 +131,14 @@ function CorrectionDecisionDialog({ request }: { request: AttendanceCorrectionRe
           <div className="space-y-2 sm:col-span-2"><Label>Motif de la décision</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Expliquez votre décision…" /></div>
           {error && <p className="sm:col-span-2 text-xs text-destructive">{error}</p>}
         </div>
-        <DialogFooter><DialogClose asChild><Button variant="outline">Plus tard</Button></DialogClose><Button onClick={submit}>Enregistrer la décision</Button></DialogFooter>
+        <DialogFooter><DialogClose asChild><Button variant="outline">Plus tard</Button></DialogClose><Button onClick={submit} disabled={isPending(`correction:${request.id}:resolve`)}>Enregistrer la décision</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
 function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string; studentId?: string; trigger?: React.ReactNode }) {
-  const { state, saveAttendance } = useAcademicData();
+  const { state, viewerId: teacherId, saveAttendance, isPending } = useAcademicData();
   const session = state.sessions.find((item) => item.id === sessionId)!;
   const roster = getSessionRoster(state, sessionId);
   const initial = roster.find((item) => item.student.id === studentId);
@@ -170,7 +151,7 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
   const [error, setError] = useState("");
   const selectedAttendance = roster.find((item) => item.student.id === selectedId)?.attendance;
 
-  function submit() {
+  async function submit() {
     if (!selectedId) {
       setError("Sélectionnez un étudiant.");
       return;
@@ -178,7 +159,7 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
     const automaticStatus = ["PRESENT", "LATE"].includes(status)
       ? deriveAttendanceStatus(session.startTime, time, session.lateThresholdMinutes ?? 10)
       : status;
-    const result = saveAttendance(sessionId, {
+    const result = await saveAttendance(sessionId, {
       studentId: selectedId,
       status: automaticStatus,
       checkedInAt: ["PRESENT", "LATE"].includes(automaticStatus) ? time : undefined,
@@ -207,7 +188,7 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
           {session.status === "COMPLETED" && selectedAttendance && <div className="space-y-2 sm:col-span-2"><Label>Motif de correction</Label><Textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Expliquez pourquoi l’historique est modifié" /></div>}
           {error && <p className="sm:col-span-2 text-xs text-destructive">{error}</p>}
         </div>
-        <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button onClick={submit}><UserCheck /> Enregistrer</Button></DialogFooter>
+        <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button onClick={submit} disabled={!selectedId || isPending(`attendance:${sessionId}:${selectedId}`)}><UserCheck /> Enregistrer</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

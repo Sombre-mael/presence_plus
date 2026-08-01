@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/admin/dashboard");
+  await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await selectDemoProfile(page, "Aline Kabeya");
   await expect(page.getByRole("heading", { name: "Pilotage académique" })).toBeVisible();
   await expect(page.getByText("Restauration de l’espace")).toHaveCount(0);
 });
@@ -32,7 +33,7 @@ test("un utilisateur peut être créé, persisté et supprimé", async ({ page }
   await page.getByRole("option", { name: "Administrateur" }).click();
   await dialog.getByRole("button", { name: "Ajouter", exact: true }).click();
   await expect(page.getByText(name).first()).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toContain("marc.test@presence.plus");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toBeNull();
 
   await page.reload();
   await expect(page.getByText(name).first()).toBeVisible();

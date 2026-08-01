@@ -28,16 +28,16 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { getStudentHistory, getStudentStats } from "@/lib/student-domain";
 
-const studentId = "u4";
-
 export function StudentHistory() {
-  const { state } = useAcademicData();
+  const { state, viewerId: studentId } = useAcademicData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [courseId, setCourseId] = useState("ALL");
   const history = getStudentHistory(state, studentId);
   const stats = getStudentStats(state, studentId);
-  const courses = state.courses.filter((course) => course.promotionId === "p2");
+  const courses = Array.from(
+    new Map(history.map(({ session }) => [session.courseId, { id: session.courseId, code: session.courseCode }])).values(),
+  );
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("fr");
     return history.filter(({ session, attendance }) =>
@@ -95,16 +95,16 @@ export function StudentHistory() {
 }
 
 function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; attendanceStatus?: AttendanceStatus }) {
-  const { createCorrectionRequest } = useAcademicData();
+  const { viewerId: studentId, createCorrectionRequest, isPending } = useAcademicData();
+  const availableStatuses = (["PRESENT", "LATE", "EXCUSED"] as const)
+    .filter((value) => value !== attendanceStatus);
   const [open, setOpen] = useState(false);
-  const [requestedStatus, setRequestedStatus] = useState<"PRESENT" | "LATE" | "EXCUSED">(
-    attendanceStatus === "LATE" ? "PRESENT" : "PRESENT",
-  );
+  const [requestedStatus, setRequestedStatus] = useState<"PRESENT" | "LATE" | "EXCUSED">(availableStatuses[0]);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
 
-  function submit() {
-    const result = createCorrectionRequest({ sessionId, studentId, requestedStatus, reason });
+  async function submit() {
+    const result = await createCorrectionRequest({ sessionId, studentId, requestedStatus, reason });
     if (result.ok) {
       setOpen(false);
       setReason("");
@@ -118,19 +118,19 @@ function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; 
       <DialogContent>
         <DialogHeader><DialogTitle>Demande de correction</DialogTitle><DialogDescription>Indiquez le statut attendu et expliquez précisément la situation.</DialogDescription></DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2"><Label>Statut souhaité</Label><Select value={requestedStatus} onValueChange={(value) => setRequestedStatus(value as typeof requestedStatus)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PRESENT">Présent</SelectItem><SelectItem value="LATE">En retard</SelectItem><SelectItem value="EXCUSED">Absence justifiée</SelectItem></SelectContent></Select></div>
+          <div className="space-y-2"><Label>Statut souhaité</Label><Select value={requestedStatus} onValueChange={(value) => setRequestedStatus(value as typeof requestedStatus)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{availableStatuses.map((value) => <SelectItem key={value} value={value}>{value === "PRESENT" ? "Présent" : value === "LATE" ? "En retard" : "Absence justifiée"}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Motif</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Décrivez ce qui doit être vérifié…" /></div>
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
-        <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button onClick={submit}><Send /> Envoyer</Button></DialogFooter>
+        <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button onClick={submit} disabled={isPending(`correction:${sessionId}:create`)}><Send /> Envoyer</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
 function PendingRequest({ requestId }: { requestId: string }) {
-  const { cancelCorrectionRequest } = useAcademicData();
-  return <Button variant="ghost" className="w-full text-destructive" onClick={() => cancelCorrectionRequest(requestId, studentId)}><XCircle /> Annuler la demande</Button>;
+  const { viewerId: studentId, cancelCorrectionRequest, isPending } = useAcademicData();
+  return <Button variant="ghost" className="w-full text-destructive" disabled={isPending(`correction:${requestId}:cancel`)} onClick={() => cancelCorrectionRequest(requestId, studentId)}><XCircle /> Annuler la demande</Button>;
 }
 
 function RequestStatus({ request }: { request: ReturnType<typeof getStudentHistory>[number]["request"] }) {

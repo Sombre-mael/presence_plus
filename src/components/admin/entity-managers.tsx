@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { BookOpen, Eye, GraduationCap, MoreHorizontal, Pencil, Plus, Search, Trash2, UserRound } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { BookOpen, Eye, GraduationCap, MoreHorizontal, Pencil, Plus, Power, Search, Trash2, UserRound } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -96,7 +99,7 @@ function DeleteDialog({
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
-  onDelete: () => MutationResult;
+  onDelete: () => Promise<MutationResult>;
   onDeleted: () => void;
 }) {
   const [error, setError] = useState("");
@@ -123,8 +126,8 @@ function DeleteDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>Annuler</Button>
           <Button
             variant="destructive"
-            onClick={() => {
-              const result = onDelete();
+            onClick={async () => {
+              const result = await onDelete();
               if (!result.ok) {
                 setError(result.message);
                 return;
@@ -181,7 +184,7 @@ function UserFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const formKey = `${user?.id ?? "new"}-${open}`;
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const input: AdminUserInput = {
@@ -192,7 +195,7 @@ function UserFormDialog({
       promotionId: role === "STUDENT" ? String(data.get("promotionId") ?? "") : undefined,
       matricule: role === "STUDENT" ? String(data.get("matricule") ?? "") : undefined,
     };
-    const result = user ? updateUser(user.id, input) : createUser(input);
+    const result = await (user ? updateUser(user.id, input) : createUser(input));
     if (!result.ok) {
       setErrors(result.fieldErrors ?? { form: result.message });
       return;
@@ -273,16 +276,27 @@ function UserFormDialog({
 }
 
 export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string }) {
-  const { state, deleteUser } = useAdminData();
-  const [query, setQuery] = useState("");
-  const [role, setRole] = useState("ALL");
-  const [status, setStatus] = useState(initialStatus);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { state, deleteUser, setUserStatus, isPending } = useAdminData();
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [role, setRole] = useState(searchParams.get("role") ?? "ALL");
+  const [status, setStatus] = useState(searchParams.get("status") ?? initialStatus);
   const [selectedId, setSelectedId] = useState<string>();
   const [editingId, setEditingId] = useState<string>();
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const selected = state.users.find((user) => user.id === selectedId);
   const editing = state.users.find((user) => user.id === editingId);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const values = { q: query, role: role === "ALL" ? "" : role, status: status === "ALL" ? "" : status };
+    Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
+    const next = params.toString();
+    if (next !== searchParams.toString()) router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [pathname, query, role, router, searchParams, status]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("fr");
@@ -381,8 +395,9 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                 <DetailLine label="Promotion">{state.promotions.find((item) => item.id === selected.promotionId)?.name ?? "Non concerné"}</DetailLine>
                 <DetailLine label="Matricule">{selected.matricule ?? "Non concerné"}</DetailLine>
               </div>
-              <SheetFooter className="grid grid-cols-2">
+              <SheetFooter className="grid grid-cols-1 sm:grid-cols-3">
                 <Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button>
+                <Button variant="outline" disabled={isPending(`user:${selected.id}:status`)} onClick={() => setUserStatus(selected.id, selected.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}><Power />{selected.status === "ACTIVE" ? "Désactiver" : "Activer"}</Button>
                 <Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button>
               </SheetFooter>
             </>
@@ -399,15 +414,16 @@ function PromotionFormDialog({ open, onOpenChange, promotion }: { open: boolean;
   const { createPromotion, updatePromotion } = useAdminData();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const input: AdminPromotionInput = {
       name: String(data.get("name") ?? ""),
       department: String(data.get("department") ?? ""),
       academicYear: String(data.get("academicYear") ?? ""),
+      description: String(data.get("description") ?? "") || undefined,
     };
-    const result = promotion ? updatePromotion(promotion.id, input) : createPromotion(input);
+    const result = await (promotion ? updatePromotion(promotion.id, input) : createPromotion(input));
     if (!result.ok) return setErrors(result.fieldErrors ?? { form: result.message });
     setErrors({});
     onOpenChange(false);
@@ -422,6 +438,7 @@ function PromotionFormDialog({ open, onOpenChange, promotion }: { open: boolean;
           <div className="space-y-2"><Label htmlFor="promotion-name">Nom</Label><Input id="promotion-name" name="name" defaultValue={promotion?.name} placeholder="L1 Informatique" /><FieldMessage message={errors.name} /></div>
           <div className="space-y-2"><Label htmlFor="promotion-department">Département</Label><Input id="promotion-department" name="department" defaultValue={promotion?.department} placeholder="Sciences informatiques" /><FieldMessage message={errors.department} /></div>
           <div className="space-y-2"><Label htmlFor="promotion-year">Année académique</Label><Input id="promotion-year" name="academicYear" defaultValue={promotion?.academicYear ?? "2025-2026"} /><FieldMessage message={errors.academicYear} /></div>
+          <div className="space-y-2"><Label htmlFor="promotion-description">Description</Label><Textarea id="promotion-description" name="description" defaultValue={promotion?.description} placeholder="Informations utiles sur cette promotion" /><FieldMessage message={errors.description} /></div>
           <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button><Button type="submit">{promotion ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
         </form>
       </DialogContent>
@@ -466,7 +483,7 @@ export function PromotionsManager() {
         })}</div>
       </div>
       <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}>
-        <SheetContent className="w-full sm:max-w-md">{selected && <><SheetHeader><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.department}</SheetDescription></SheetHeader><div className="px-4"><DetailLine label="Année">{selected.academicYear}</DetailLine><DetailLine label="Étudiants">{counts(selected.id).students}</DetailLine><DetailLine label="Cours">{counts(selected.id).courses}</DetailLine></div><SheetFooter className="grid grid-cols-2"><Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button><Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button></SheetFooter></>}</SheetContent>
+        <SheetContent className="w-full sm:max-w-md">{selected && <><SheetHeader><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.department}</SheetDescription></SheetHeader><div className="px-4"><DetailLine label="Année">{selected.academicYear}</DetailLine><DetailLine label="Description">{selected.description ?? "Aucune description"}</DetailLine><DetailLine label="Étudiants">{counts(selected.id).students}</DetailLine><DetailLine label="Cours">{counts(selected.id).courses}</DetailLine></div><SheetFooter className="grid grid-cols-2"><Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button><Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button></SheetFooter></>}</SheetContent>
       </Sheet>
       <PromotionFormDialog open={formOpen} onOpenChange={setFormOpen} promotion={editing} />
       {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.name} ?`} description="La suppression est refusée tant que des étudiants, cours ou sessions y sont liés." onDelete={() => deletePromotion(selected.id)} onDeleted={() => setSelectedId(undefined)} />}
@@ -479,7 +496,7 @@ function CourseFormDialog({ open, onOpenChange, course }: { open: boolean; onOpe
   const [errors, setErrors] = useState<Record<string, string>>({});
   const teachers = state.users.filter((user) => user.role === "TEACHER" && user.status === "ACTIVE");
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const input: AdminCourseInput = {
@@ -488,8 +505,10 @@ function CourseFormDialog({ open, onOpenChange, course }: { open: boolean; onOpe
       teacherId: String(data.get("teacherId") ?? ""),
       promotionId: String(data.get("promotionId") ?? ""),
       weeklyHours: Number(data.get("weeklyHours") ?? 0),
+      description: String(data.get("description") ?? "") || undefined,
+      active: course?.active ?? true,
     };
-    const result = course ? updateCourse(course.id, input) : createCourse(input);
+    const result = await (course ? updateCourse(course.id, input) : createCourse(input));
     if (!result.ok) return setErrors(result.fieldErrors ?? { form: result.message });
     setErrors({});
     onOpenChange(false);
@@ -505,6 +524,7 @@ function CourseFormDialog({ open, onOpenChange, course }: { open: boolean; onOpe
             <div className="space-y-2"><Label htmlFor="course-code">Code</Label><Input id="course-code" name="code" defaultValue={course?.code} placeholder="INF301" /><FieldMessage message={errors.code} /></div>
             <div className="space-y-2"><Label htmlFor="course-hours">Heures par semaine</Label><Input id="course-hours" name="weeklyHours" type="number" min="1" max="20" defaultValue={course?.weeklyHours ?? 4} /><FieldMessage message={errors.weeklyHours} /></div>
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="course-name">Intitulé</Label><Input id="course-name" name="name" defaultValue={course?.name} placeholder="Développement web" /><FieldMessage message={errors.name} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="course-description">Description</Label><Textarea id="course-description" name="description" defaultValue={course?.description} placeholder="Objectifs et contenu du cours" /><FieldMessage message={errors.description} /></div>
             <div className="space-y-2"><Label>Enseignant</Label><Select name="teacherId" defaultValue={course?.teacherId}><SelectTrigger className="w-full"><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{teachers.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.name}</SelectItem>)}</SelectContent></Select><FieldMessage message={errors.teacherId} /></div>
             <div className="space-y-2"><Label>Promotion</Label><Select name="promotionId" defaultValue={course?.promotionId}><SelectTrigger className="w-full"><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{state.promotions.map((promotion) => <SelectItem key={promotion.id} value={promotion.id}>{promotion.name}</SelectItem>)}</SelectContent></Select><FieldMessage message={errors.promotionId} /></div>
           </div>
@@ -516,10 +536,13 @@ function CourseFormDialog({ open, onOpenChange, course }: { open: boolean; onOpe
 }
 
 export function CoursesManager() {
-  const { state, deleteCourse } = useAdminData();
-  const [query, setQuery] = useState("");
-  const [promotionFilter, setPromotionFilter] = useState("ALL");
-  const [selectedId, setSelectedId] = useState<string>();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { state, deleteCourse, setCourseActive, isPending } = useAdminData();
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [promotionFilter, setPromotionFilter] = useState(searchParams.get("promotion") ?? "ALL");
+  const [selectedId, setSelectedId] = useState<string | undefined>(searchParams.get("course") ?? undefined);
   const [editingId, setEditingId] = useState<string>();
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -533,15 +556,23 @@ export function CoursesManager() {
   const promotionName = (id: string) => state.promotions.find((promotion) => promotion.id === id)?.name ?? "Non affectée";
   function edit(id: string) { setEditingId(id); setFormOpen(true); }
 
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const values = { q: query, promotion: promotionFilter === "ALL" ? "" : promotionFilter, course: selectedId ?? "" };
+    Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
+    const next = params.toString();
+    if (next !== searchParams.toString()) router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [pathname, promotionFilter, query, router, searchParams, selectedId]);
+
   return (
     <div>
       <PageHeader title="Cours" description="Gérez les affectations entre cours, enseignants et promotions." action={<Button onClick={() => { setEditingId(undefined); setFormOpen(true); }}><Plus />Ajouter un cours</Button>} />
       <div className="border bg-background">
         <div className="grid gap-3 border-b p-4 md:grid-cols-[minmax(260px,1fr)_220px]"><SearchField value={query} onChange={setQuery} placeholder="Code ou intitulé..." /><Select value={promotionFilter} onValueChange={setPromotionFilter}><SelectTrigger className="w-full"><SelectValue placeholder="Toutes les promotions" /></SelectTrigger><SelectContent><SelectItem value="ALL">Toutes les promotions</SelectItem>{state.promotions.map((promotion) => <SelectItem key={promotion.id} value={promotion.id}>{promotion.name}</SelectItem>)}</SelectContent></Select></div>
-        <div className="hidden md:block"><Table><TableHeader><TableRow><TableHead>Cours</TableHead><TableHead>Enseignant</TableHead><TableHead>Promotion</TableHead><TableHead>Volume</TableHead><TableHead className="w-14" /></TableRow></TableHeader><TableBody>{filtered.map((course) => <TableRow key={course.id}><TableCell><button className="text-left" onClick={() => setSelectedId(course.id)}><span className="block font-medium">{course.name}</span><span className="text-xs text-muted-foreground">{course.code}</span></button></TableCell><TableCell>{teacherName(course.teacherId)}</TableCell><TableCell>{promotionName(course.promotionId)}</TableCell><TableCell>{course.weeklyHours} h</TableCell><TableCell><RowActions onView={() => setSelectedId(course.id)} onEdit={() => edit(course.id)} onDelete={() => { setSelectedId(course.id); setDeleteOpen(true); }} /></TableCell></TableRow>)}</TableBody></Table></div>
+        <div className="hidden md:block"><Table><TableHeader><TableRow><TableHead>Cours</TableHead><TableHead>État</TableHead><TableHead>Enseignant</TableHead><TableHead>Promotion</TableHead><TableHead>Volume</TableHead><TableHead className="w-14" /></TableRow></TableHeader><TableBody>{filtered.map((course) => <TableRow key={course.id}><TableCell><button className="text-left" onClick={() => setSelectedId(course.id)}><span className="block font-medium">{course.name}</span><span className="text-xs text-muted-foreground">{course.code}</span></button></TableCell><TableCell><Badge variant={course.active === false ? "secondary" : "default"}>{course.active === false ? "Inactif" : "Actif"}</Badge></TableCell><TableCell>{teacherName(course.teacherId)}</TableCell><TableCell>{promotionName(course.promotionId)}</TableCell><TableCell>{course.weeklyHours} h</TableCell><TableCell><RowActions onView={() => setSelectedId(course.id)} onEdit={() => edit(course.id)} onDelete={() => { setSelectedId(course.id); setDeleteOpen(true); }} /></TableCell></TableRow>)}</TableBody></Table></div>
         <div className="divide-y md:hidden">{filtered.map((course) => <button key={course.id} onClick={() => setSelectedId(course.id)} className="flex w-full items-center gap-3 p-4 text-left"><span className="flex size-9 items-center justify-center bg-primary/8 text-primary"><BookOpen className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{course.name}</span><span className="block truncate text-xs text-muted-foreground">{course.code} · {teacherName(course.teacherId)}</span></span><span className="text-xs text-muted-foreground">{course.weeklyHours} h</span></button>)}</div>
       </div>
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}><SheetContent className="w-full sm:max-w-md">{selected && <><SheetHeader><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.code}</SheetDescription></SheetHeader><div className="px-4"><DetailLine label="Enseignant">{teacherName(selected.teacherId)}</DetailLine><DetailLine label="Promotion">{promotionName(selected.promotionId)}</DetailLine><DetailLine label="Volume">{selected.weeklyHours} heures par semaine</DetailLine><DetailLine label="Sessions">{state.sessions.filter((session) => session.courseId === selected.id).length}</DetailLine></div><SheetFooter className="grid grid-cols-2"><Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button><Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button></SheetFooter></>}</SheetContent></Sheet>
+      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}><SheetContent className="w-full sm:max-w-md">{selected && <><SheetHeader><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.code} · {selected.active === false ? "Inactif" : "Actif"}</SheetDescription></SheetHeader><div className="px-4"><DetailLine label="Description">{selected.description ?? "Aucune description"}</DetailLine><DetailLine label="Enseignant">{teacherName(selected.teacherId)}</DetailLine><DetailLine label="Promotion">{promotionName(selected.promotionId)}</DetailLine><DetailLine label="Volume">{selected.weeklyHours} heures par semaine</DetailLine><DetailLine label="Sessions">{state.sessions.filter((session) => session.courseId === selected.id).length}</DetailLine></div><SheetFooter className="grid grid-cols-1 sm:grid-cols-3"><Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button><Button variant="outline" disabled={isPending(`course:${selected.id}:active`)} onClick={() => setCourseActive(selected.id, selected.active === false)}><Power />{selected.active === false ? "Activer" : "Désactiver"}</Button><Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button></SheetFooter></>}</SheetContent></Sheet>
       <CourseFormDialog open={formOpen} onOpenChange={setFormOpen} course={editing} />
       {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.code} ?`} description="Un cours possédant des sessions ne peut pas être supprimé." onDelete={() => deleteCourse(selected.id)} onDeleted={() => setSelectedId(undefined)} />}
     </div>

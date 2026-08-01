@@ -16,6 +16,8 @@ export interface AttendanceCorrectionRequest {
   decisionReason?: string;
   resolvedStatus?: AttendanceStatus;
   resolvedBy?: string;
+  resolvedByName?: string;
+  resolvedAt?: string;
 }
 
 export interface CorrectionRequestInput {
@@ -50,6 +52,7 @@ export interface CheckInPreview {
   source: Extract<AttendanceSource, "QR" | "STUDENT_CODE">;
   validatedAt: number;
   confirmationExpiresAt: number;
+  receipt?: string;
 }
 
 export type CheckInValidationResult =

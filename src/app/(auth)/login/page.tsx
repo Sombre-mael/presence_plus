@@ -5,7 +5,18 @@ import { LoginForm } from "@/components/auth/login-form";
 import { LoginVisual } from "@/components/auth/login-visual";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function LoginPage() {
+const loginErrors: Record<string, string> = {
+  database: "Neon est momentanement inaccessible. Verifiez votre connexion puis reessayez.",
+  inactive: "Ce profil de demonstration est introuvable ou inactif.",
+  profile: "Le profil demande n'est pas autorise en mode demonstration.",
+};
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   return (
     <main className="grid min-h-screen bg-[#f6f8f7] lg:grid-cols-[minmax(420px,0.92fr)_minmax(520px,1.08fr)]">
       <section className="relative hidden min-h-screen overflow-hidden bg-[#12332c] px-10 py-8 text-white lg:flex lg:flex-col xl:px-14 xl:py-10">
@@ -55,19 +66,19 @@ export default function LoginPage() {
 
           <Card className="border-border/80 bg-background shadow-sm">
             <CardHeader className="space-y-2 pb-5">
-              <p className="text-xs font-semibold uppercase text-primary">Connexion sécurisée</p>
-              <CardTitle className="text-2xl tracking-normal">Bienvenue</CardTitle>
+              <p className="text-xs font-semibold uppercase text-primary">Accès de démonstration</p>
+              <CardTitle className="text-2xl tracking-normal">Choisissez votre espace</CardTitle>
               <CardDescription>
-                Identifiez-vous pour accéder à votre espace Presence Plus.
+                Testez les parcours avec l’un des trois profils reliés à Neon.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LoginForm />
+              <LoginForm error={error ? loginErrors[error] : undefined} />
             </CardContent>
           </Card>
 
           <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
-            Vos accès sont personnels. Ne partagez jamais votre mot de passe.
+            Aucun mot de passe n’est demandé tant que l’authentification réelle n’est pas activée.
           </p>
         </div>
       </section>

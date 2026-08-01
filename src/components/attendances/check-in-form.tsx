@@ -17,18 +17,16 @@ import {
 import type { IScannerControls } from "@zxing/browser";
 import type { CheckInPreview, CheckInValidationResult } from "@/types/student";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
-import { validateStudentCheckIn } from "@/lib/student-domain";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const studentId = "u4";
 type FlowState = "idle" | "requesting" | "scanning" | "preview" | "success" | "error";
 
 export function CheckInForm() {
-  const { state, submitStudentCheckIn } = useAcademicData();
+  const { state, viewerId: studentId, validateStudentCode, submitStudentCheckIn } = useAcademicData();
   const reduceMotion = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -83,7 +81,7 @@ export function CheckInForm() {
         (result) => {
           if (!result) return;
           stopCamera();
-          acceptValidation(validateStudentCheckIn(state, result.getText(), studentId, "QR"));
+          void validateStudentCode(result.getText(), "QR").then(acceptValidation);
         },
       );
       controlsRef.current = controls;
@@ -96,14 +94,14 @@ export function CheckInForm() {
     }
   }
 
-  function submitCode(event: React.FormEvent) {
+  async function submitCode(event: React.FormEvent) {
     event.preventDefault();
-    acceptValidation(validateStudentCheckIn(state, code, studentId, "STUDENT_CODE"));
+    acceptValidation(await validateStudentCode(code, "STUDENT_CODE"));
   }
 
-  function confirm() {
+  async function confirm() {
     if (!preview) return;
-    const result = submitStudentCheckIn({ ...preview, confirmedAt: Date.now() });
+    const result = await submitStudentCheckIn({ ...preview, confirmedAt: Date.now() });
     if (!result.ok) {
       setMessage(result.message);
       setFlow("error");

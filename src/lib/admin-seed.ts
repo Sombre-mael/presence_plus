@@ -121,6 +121,7 @@ export const initialAdminData: AdminDataState = {
     }),
   ],
   correctionRequests: [],
+  auditLogs: [],
 };
 
 export function freshAdminData(): AdminDataState {

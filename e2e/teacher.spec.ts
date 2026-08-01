@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { cleanupSessionFixture, createActiveSessionFixture, futureAcademicDate, selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/teacher/dashboard");
+  await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
-  await page.reload();
+  await selectDemoProfile(page, "Patrick Ilunga");
   await expect(page.getByRole("heading", { name: "Bonjour Patrick" })).toBeVisible();
 });
 
@@ -19,7 +20,7 @@ test("la navigation enseignant est animée, compacte et persistante", async ({ p
 
 test("une session peut être planifiée et persiste après rechargement", async ({ page }) => {
   await page.goto("/teacher/sessions/new");
-  await page.getByLabel("Date").fill("2026-07-29");
+  await page.getByLabel("Date").fill(futureAcademicDate());
   await page.getByLabel("Salle").fill("C20");
   await page.getByLabel("Heure de début").fill("13:00");
   await page.getByLabel("Heure de fin").fill("15:00");
@@ -28,7 +29,9 @@ test("une session peut être planifiée et persiste après rechargement", async 
   await expect(page.getByText("La séance est prête")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Salle")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toContain("C20");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toBeNull();
+  const sessionId = new URL(page.url()).pathname.split("/").at(-1);
+  if (sessionId) await cleanupSessionFixture(sessionId);
 });
 
 test("les vues liste et calendrier restent utilisables sur mobile", async ({ page }) => {
@@ -36,17 +39,22 @@ test("les vues liste et calendrier restent utilisables sur mobile", async ({ pag
   await page.goto("/teacher/sessions");
   await expect(page.getByRole("heading", { name: "Mes sessions" })).toBeVisible();
   await page.getByRole("tab", { name: "Calendrier" }).click();
-  await expect(page.getByText("Juillet 2026")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 });
 
 test("le QR actif tourne et la feuille de présence est complète", async ({ page }) => {
-  await page.goto("/teacher/sessions/session-001/qr");
-  await expect(page.getByText("Code renouvelé automatiquement")).toBeVisible();
-  await expect(page.getByText(/Nouveau code dans/)).toBeVisible();
-  await page.getByRole("link", { name: "Présences" }).click();
-  await page.waitForURL("**/teacher/sessions/session-001/attendances", { timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Présences de la session" })).toBeVisible();
-  await expect(page.getByText("Junior Mpoyi")).toBeVisible();
-  await expect(page.getByText("En attente").first()).toBeVisible();
+  const sessionId = await createActiveSessionFixture();
+  try {
+    await page.goto(`/teacher/sessions/${sessionId}/qr`);
+    await expect(page.getByText("Code renouvelé automatiquement")).toBeVisible();
+    await expect(page.getByText(/Nouveau code dans/)).toBeVisible();
+    await page.getByRole("link", { name: "Présences" }).click();
+    await page.waitForURL(`**/teacher/sessions/${sessionId}/attendances`, { timeout: 90_000 });
+    await expect(page.getByRole("heading", { name: "Présences de la session" })).toBeVisible();
+    await expect(page.getByText("Junior Mpoyi")).toBeVisible();
+    await expect(page.getByText("Sarah Mbuyi")).toBeVisible();
+  } finally {
+    await cleanupSessionFixture(sessionId);
+  }
 });
