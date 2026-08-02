@@ -1,21 +1,128 @@
-MIT License
+Licence de collaboration à code source consultable Presence Plus 1.0
 
-Copyright (c) 2026 Sombre Mael and Gildas Tshibanda
+Copyright (c) 2026 Sombre Mael et Gildas Tshibanda. Tous droits réservés.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+La présente version française constitue la version officielle de cette licence
+et fait foi.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. OBJET
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+La présente licence rend le code source de Presence Plus accessible à des fins
+de consultation, d'évaluation, d'étude du projet, d'audit de sécurité et de
+contribution collaborative. Elle n'accorde aucun droit général de réutilisation
+du logiciel.
+
+Il s'agit d'une licence à code source consultable. Elle ne constitue ni une
+licence open source au sens de l'Open Source Initiative, ni une licence de
+logiciel libre.
+
+2. DÉFINITIONS
+
+Le « Logiciel » désigne le code source, le code objet, la documentation, les
+éléments visuels, les schémas de base de données, les migrations et tout autre
+contenu original distribué dans ce dépôt, à l'exception des composants tiers
+régis par leurs propres licences.
+
+Le « Responsable » désigne Sombre Mael ou toute personne expressément autorisée
+par écrit à administrer le projet Presence Plus et à accorder des permissions
+relatives au Logiciel.
+
+Une « Contribution » désigne toute modification volontairement soumise au dépôt
+officiel de Presence Plus en vue de son éventuelle intégration au projet.
+
+3. AUTORISATION LIMITÉE
+
+Sous réserve du respect de la présente licence, vous êtes autorisé à :
+
+a. consulter et examiner le Logiciel ;
+b. télécharger et réaliser un nombre raisonnable de copies uniquement pour une
+   évaluation privée, un audit de sécurité ou la préparation d'une Contribution ;
+c. exécuter et modifier le Logiciel uniquement dans la mesure raisonnablement
+   nécessaire pour préparer, tester et soumettre une Contribution au dépôt
+   officiel de Presence Plus ;
+d. discuter du projet, l'examiner et proposer des améliorations.
+
+Ces autorisations sont personnelles, limitées, non exclusives, incessibles et
+non susceptibles de sous-licence. Elles peuvent être révoquées en cas de
+violation de la présente licence.
+
+4. RESTRICTIONS
+
+Sauf autorisation écrite préalable du Responsable, vous ne pouvez pas :
+
+a. réutiliser tout ou partie substantielle du Logiciel dans une autre
+   application, un autre service, produit, projet académique, modèle,
+   bibliothèque ou code source ;
+b. copier, publier, redistribuer, vendre, concéder sous licence, louer ou mettre
+   autrement le Logiciel, ou une version modifiée de celui-ci, à la disposition
+   d'un tiers ;
+c. déployer, héberger, exploiter ou mettre le Logiciel à disposition sous forme
+   de service, à des fins commerciales ou non commerciales ;
+d. créer ou distribuer un projet dérivé fondé sur le Logiciel ;
+e. utiliser le Logiciel, son architecture, ses interfaces, son identité visuelle
+   ou ses éléments graphiques pour créer un produit concurrent ou
+   substantiellement similaire ;
+f. supprimer ou modifier les mentions de droit d'auteur, d'attribution, de
+   licence ou de propriété ;
+g. utiliser le nom Presence Plus, son logo, ses marques ou son identité visuelle
+   sans autorisation écrite distincte ;
+h. présenter une copie, un fork ou un projet dérivé comme une version officielle
+   de Presence Plus.
+
+Aucun droit n'est accordé implicitement, par renonciation ou autrement. Tous les
+droits qui ne sont pas expressément accordés à l'article 3 restent réservés au
+titulaire des droits d'auteur.
+
+5. CONTRIBUTIONS
+
+Vous pouvez proposer des Contributions au moyen des outils de collaboration du
+dépôt officiel, notamment les issues et les pull requests.
+
+En soumettant une Contribution, vous déclarez disposer des droits nécessaires
+pour le faire et, à votre connaissance, ne porter atteinte aux droits d'aucun
+tiers. Vous accordez au Responsable une autorisation perpétuelle, mondiale,
+gratuite, irrévocable et non exclusive lui permettant d'utiliser, reproduire,
+modifier, intégrer, distribuer, concéder sous licence et placer sous une autre
+licence cette Contribution dans le cadre de Presence Plus.
+
+La soumission d'une Contribution ne transfère aucun droit de propriété sur le
+reste du Logiciel et ne vous autorise pas à réutiliser le projet en dehors des
+permissions prévues à l'article 3.
+
+6. COMPOSANTS TIERS
+
+Les bibliothèques, frameworks, outils et autres dépendances appartenant à des
+tiers restent soumis à leurs licences respectives. La présente licence ne limite
+pas les droits directement accordés par les licences de ces composants tiers.
+
+7. RÉSILIATION
+
+Les permissions qui vous sont accordées prennent automatiquement fin en cas de
+violation de l'une des dispositions de la présente licence. À compter de cette
+résiliation, vous devez cesser toute utilisation du Logiciel et supprimer les
+copies placées sous votre contrôle, sauf conservation imposée par la loi
+applicable. Les articles 4, 5, 8 et 9 restent applicables après la résiliation.
+
+8. ABSENCE DE GARANTIE
+
+LE LOGICIEL EST FOURNI « EN L'ÉTAT », SANS GARANTIE D'AUCUNE SORTE, EXPRESSE OU
+IMPLICITE, NOTAMMENT SANS GARANTIE DE QUALITÉ MARCHANDE, D'ADÉQUATION À UN USAGE
+PARTICULIER, DE TITRE OU D'ABSENCE DE CONTREFAÇON.
+
+9. LIMITATION DE RESPONSABILITÉ
+
+DANS LA MESURE MAXIMALE AUTORISÉE PAR LA LOI, LE TITULAIRE DES DROITS D'AUTEUR,
+LE RESPONSABLE ET LES CONTRIBUTEURS NE POURRONT ÊTRE TENUS RESPONSABLES D'UNE
+RÉCLAMATION, D'UN DOMMAGE OU DE TOUTE AUTRE RESPONSABILITÉ DÉCOULANT DU LOGICIEL,
+DE SON UTILISATION OU EN LIEN AVEC CEUX-CI.
+
+10. DEMANDE D'AUTORISATION SUPPLÉMENTAIRE
+
+Toute permission non accordée par la présente licence, notamment le déploiement,
+la réutilisation, la redistribution, l'utilisation pédagogique ou l'exploitation
+commerciale, nécessite l'autorisation écrite préalable du Responsable.
+
+Les demandes peuvent être transmises par l'intermédiaire du dépôt officiel de
+Presence Plus :
+
+https://github.com/Sombre-mael/presence_plus

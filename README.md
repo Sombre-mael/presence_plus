@@ -221,4 +221,8 @@ e2e/              Parcours Playwright
 
 ## Licence
 
-Ce projet est distribué sous licence MIT. Consultez le fichier [LICENSE](./LICENSE) pour plus d'informations.
+Presence Plus est publié sous la **Licence de collaboration à code source consultable Presence Plus 1.0**. La version française du texte constitue la version officielle faisant foi.
+
+Le code peut être consulté, évalué et modifié dans le seul but de proposer une contribution au dépôt officiel. Sa réutilisation dans un autre projet, sa redistribution, son déploiement ou son exploitation, commerciale comme non commerciale, nécessitent une autorisation écrite préalable.
+
+Cette licence est **source-visible et collaborative**, mais elle ne constitue pas une licence open source au sens de l'Open Source Initiative. Consultez le fichier [LICENSE](./LICENSE) pour les conditions complètes.
