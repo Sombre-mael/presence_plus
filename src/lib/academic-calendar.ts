@@ -9,6 +9,23 @@ export function currentAcademicDate(now = new Date()) {
   }).format(now);
 }
 
+export function currentAcademicTime(now = new Date()) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: ACADEMIC_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(now);
+}
+
+export function currentAcademicDateTimeKey(now = new Date()) {
+  return `${currentAcademicDate(now)}T${currentAcademicTime(now)}`;
+}
+
+export function academicDateTimeKey(date: string, time: string) {
+  return `${date}T${time}`;
+}
+
 function atNoonUtc(date: string) {
   return new Date(`${date}T12:00:00Z`);
 }
@@ -31,6 +48,13 @@ export function academicWeek(date = currentAcademicDate()) {
 
 export function academicMonth(date = currentAcademicDate()) {
   return date.slice(0, 7);
+}
+
+export function currentAcademicYear(date = currentAcademicDate()) {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const start = month >= 8 ? year : year - 1;
+  return `${start}-${start + 1}`;
 }
 
 export function shiftAcademicMonth(month: string, amount: number) {

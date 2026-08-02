@@ -38,7 +38,13 @@ export function LoginForm({ error }: { error?: string }) {
       </Alert>
       <div className="grid gap-2">
         {demoProfiles.map((profile, index) => (
-          <motion.div key={profile.id} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : index * 0.06 }}>
+          <motion.div
+            key={profile.id}
+            initial={false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, delay: reduceMotion ? 0 : index * 0.04 }}
+            whileHover={reduceMotion ? undefined : { x: 4 }}
+          >
             <Button type="button" variant="outline" disabled={pending} onClick={() => choose(profile.id)} className="h-auto min-h-20 w-full justify-start gap-3 px-3 py-3 text-left hover:border-primary/40 hover:bg-primary/5">
               <span className={`flex size-10 shrink-0 items-center justify-center ${profile.color}`}><profile.icon className="size-5" /></span>
               <span className="min-w-0 flex-1">

@@ -3,6 +3,7 @@ import { freshAdminData } from "../src/lib/admin-seed";
 import { createQrToken } from "../src/lib/academic-domain";
 import {
   getStudentStats,
+  getTeacherCorrectionNotifications,
   validateCheckInConfirmation,
   validateCorrectionRequest,
   validateStudentCheckIn,
@@ -111,5 +112,57 @@ describe("règles métier étudiant", () => {
       ...input,
     });
     expect(validateCorrectionRequest(state, input).ok).toBe(false);
+  });
+
+  it("autorise une correction historique après un changement de promotion", () => {
+    const state = freshAdminData();
+    const session = state.sessions.find((item) => item.id === "session-004")!;
+    const student = state.users.find((item) => item.id === "u4")!;
+    const previousPromotionId = session.promotionId;
+    student.promotionId = state.promotions.find((item) => item.id !== previousPromotionId)!.id;
+
+    expect(validateCorrectionRequest(state, {
+      sessionId: session.id,
+      studentId: student.id,
+      requestedStatus: "PRESENT",
+      reason: "Je demande la vérification de cette ancienne présence.",
+    }).ok).toBe(true);
+  });
+
+  it("signale un résultat Neon manquant sans le compter comme une absence", () => {
+    const state = freshAdminData();
+    const before = getStudentStats(state, "u4");
+    const completedSession = state.sessions.find((item) =>
+      item.status === "COMPLETED" && state.attendances.some(
+        (attendance) => attendance.sessionId === item.id && attendance.studentId === "u4",
+      ),
+    )!;
+    state.attendances = state.attendances.filter((attendance) =>
+      attendance.sessionId !== completedSession.id || attendance.studentId !== "u4",
+    );
+
+    const after = getStudentStats(state, "u4");
+    expect(after.missingCount).toBe(before.missingCount + 1);
+    expect(after.recordedCount).toBe(before.recordedCount - 1);
+    expect(after.absentCount).toBeLessThanOrEqual(before.absentCount);
+  });
+
+  it("centralise les demandes en attente dans la boîte enseignant", () => {
+    const state = freshAdminData();
+    state.correctionRequests.push({
+      id: "request-centralized",
+      sessionId: "session-004",
+      attendanceId: "a6",
+      studentId: "u4",
+      teacherId: "u2",
+      requestedStatus: "PRESENT",
+      reason: "Je souhaite faire vérifier cette présence.",
+      status: "PENDING",
+      createdAt: "2026-07-25T10:00:00.000Z",
+      updatedAt: "2026-07-25T10:00:00.000Z",
+    });
+
+    expect(getTeacherCorrectionNotifications(state, "u2")[0]?.href)
+      .toBe("/teacher/corrections?request=request-centralized");
   });
 });

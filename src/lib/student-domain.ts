@@ -7,7 +7,7 @@ import type {
   StudentCheckInInput,
 } from "@/types/student";
 import { createQrToken, deriveAttendanceStatus } from "./academic-domain";
-import { currentAcademicDate } from "./academic-calendar";
+import { academicDateTimeKey, currentAcademicDate, currentAcademicDateTimeKey } from "./academic-calendar";
 
 function sessionTeacherId(state: AcademicDataState, courseId: string) {
   return state.courses.find((course) => course.id === courseId)?.teacherId;
@@ -28,21 +28,28 @@ export function getStudentSessions(state: AcademicDataState, studentId: string) 
 export function getStudentHistory(state: AcademicDataState, studentId: string) {
   const currentSessionIds = new Set(getStudentSessions(state, studentId).map((session) => session.id));
   const historicalSessionIds = new Set([
+    ...state.sessions
+      .filter((session) => session.enrolledStudentIds?.includes(studentId))
+      .map((session) => session.id),
     ...state.attendances.filter((record) => record.studentId === studentId).map((record) => record.sessionId),
     ...state.correctionRequests.filter((request) => request.studentId === studentId).map((request) => request.sessionId),
   ]);
   return state.sessions
     .filter((session) => currentSessionIds.has(session.id) || historicalSessionIds.has(session.id))
     .filter((session) => session.status === "COMPLETED")
-    .map((session) => ({
-      session,
-      attendance: state.attendances.find(
-        (record) => record.sessionId === session.id && record.studentId === studentId,
-      ),
-      request: state.correctionRequests
+    .map((session) => {
+      const requests = state.correctionRequests
         .filter((request) => request.sessionId === session.id && request.studentId === studentId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0],
-    }))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return {
+        session,
+        attendance: state.attendances.find(
+          (record) => record.sessionId === session.id && record.studentId === studentId,
+        ),
+        requests,
+        request: requests[0],
+      };
+    })
     .sort((a, b) => `${b.session.date}${b.session.startTime}`.localeCompare(`${a.session.date}${a.session.startTime}`));
 }
 
@@ -57,10 +64,14 @@ export function getStudentStats(state: AcademicDataState, studentId: string) {
   return {
     attendanceRate: eligible.length ? Math.round(attended / eligible.length * 100) : 0,
     punctualityRate: attended ? Math.round(present / attended * 100) : 100,
+    eligibleCount: eligible.length,
+    attendedCount: attended,
     lateCount: late,
     absentCount: absent,
     excusedCount: records.filter((record) => record.status === "EXCUSED").length,
     completedCount: history.length,
+    recordedCount: records.length,
+    missingCount: history.length - records.length,
   };
 }
 
@@ -212,7 +223,16 @@ export function validateCorrectionRequest(
   if (!session || session.status !== "COMPLETED") {
     return { ok: false, message: "Une demande concerne uniquement une session clôturée." };
   }
-  if (!student || student.role !== "STUDENT" || session.promotionId !== student.promotionId) {
+  const hasHistoricalRecord = state.attendances.some(
+    (record) => record.sessionId === input.sessionId && record.studentId === input.studentId,
+  ) || state.correctionRequests.some(
+    (request) => request.sessionId === input.sessionId && request.studentId === input.studentId,
+  );
+  if (
+    !student ||
+    student.role !== "STUDENT" ||
+    (session.promotionId !== student.promotionId && !hasHistoricalRecord)
+  ) {
     return { ok: false, message: "Cette session ne concerne pas cet étudiant." };
   }
   if (input.reason.trim().length < 10) {
@@ -243,11 +263,16 @@ export function getStudentNotifications(
 ): AdminAnomaly[] {
   const notifications: AdminAnomaly[] = [];
   const sessions = getStudentSessions(state, studentId);
+  const nowKey = currentAcademicDateTimeKey();
   for (const session of sessions) {
     const attendance = state.attendances.find(
       (record) => record.sessionId === session.id && record.studentId === studentId,
     );
-    if (session.status === "ACTIVE" && !attendance) {
+    if (
+      session.status === "ACTIVE" &&
+      academicDateTimeKey(session.date, session.endTime) > nowKey &&
+      !attendance
+    ) {
       notifications.push({
         id: `check-in-${session.id}`,
         severity: "HIGH",
@@ -255,7 +280,11 @@ export function getStudentNotifications(
         detail: `${session.courseCode} accepte les présences maintenant.`,
         href: "/student/check-in",
       });
-    } else if (session.status === "SCHEDULED" && session.date === currentAcademicDate()) {
+    } else if (
+      session.status === "SCHEDULED" &&
+      session.date === currentAcademicDate() &&
+      academicDateTimeKey(session.date, session.startTime) > nowKey
+    ) {
       notifications.push({
         id: `upcoming-${session.id}`,
         severity: "LOW",
@@ -303,7 +332,7 @@ export function getTeacherCorrectionNotifications(
         severity: "MEDIUM" as const,
         title: "Correction demandée",
         detail: `${student?.name ?? "Un étudiant"} · ${session?.courseCode ?? "Session"}`,
-        href: `/teacher/sessions/${request.sessionId}/attendances?request=${request.id}`,
+        href: `/teacher/corrections?request=${request.id}`,
       };
     });
 }

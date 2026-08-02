@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Download, MessageSquareText, Pencil, Plus, Search, UserCheck, X } from "lucide-react";
+import { Download, MessageSquareText, Pencil, Plus, Search, UserCheck } from "lucide-react";
 import type { AttendanceStatus } from "@/types";
-import type { AttendanceCorrectionRequest } from "@/types/student";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
+import { CorrectionDecisionDialog } from "@/components/teacher/correction-decision-dialog";
 import { deriveAttendanceStatus, getSessionRoster } from "@/lib/academic-domain";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -47,7 +47,7 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
     .sort((a, b) => Number(b.id === highlightedRequestId) - Number(a.id === highlightedRequestId));
 
   function exportCsv() {
-    const params = new URLSearchParams({ sessionId, status });
+    const params = new URLSearchParams({ sessionId, status, query });
     window.location.assign(`/api/exports?${params}`);
   }
 
@@ -95,50 +95,8 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
   );
 }
 
-function CorrectionDecisionDialog({ request }: { request: AttendanceCorrectionRequest }) {
-  const { state, viewerId: teacherId, resolveCorrectionRequest, isPending } = useAcademicData();
-  const session = state.sessions.find((item) => item.id === request.sessionId)!;
-  const [open, setOpen] = useState(false);
-  const [decision, setDecision] = useState<"APPROVE" | "REJECT">("APPROVE");
-  const [resolvedStatus, setResolvedStatus] = useState<AttendanceStatus>(request.requestedStatus);
-  const [checkedInAt, setCheckedInAt] = useState(session.startTime);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-
-  async function submit() {
-    const result = await resolveCorrectionRequest({
-      requestId: request.id,
-      teacherId,
-      decision,
-      reason,
-      resolvedStatus: decision === "APPROVE" ? resolvedStatus : undefined,
-      checkedInAt,
-    });
-    if (result.ok) {
-      setOpen(false);
-      setError("");
-    } else setError(result.message);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button variant="outline">Examiner</Button></DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>Traiter la demande</DialogTitle><DialogDescription>La décision sera visible immédiatement dans l’espace étudiant.</DialogDescription></DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label>Décision</Label><div className="grid grid-cols-2 gap-2"><Button type="button" variant={decision === "APPROVE" ? "default" : "outline"} onClick={() => setDecision("APPROVE")}><Check /> Accepter</Button><Button type="button" variant={decision === "REJECT" ? "destructive" : "outline"} onClick={() => setDecision("REJECT")}><X /> Refuser</Button></div></div>
-          {decision === "APPROVE" && <><div className="space-y-2"><Label>Statut final</Label><Select value={resolvedStatus} onValueChange={(value) => setResolvedStatus(value as AttendanceStatus)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PRESENT">Présent</SelectItem><SelectItem value="LATE">En retard</SelectItem><SelectItem value="ABSENT">Absent</SelectItem><SelectItem value="EXCUSED">Justifiée</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Heure retenue</Label><Input type="time" value={checkedInAt} onChange={(event) => setCheckedInAt(event.target.value)} disabled={!["PRESENT", "LATE"].includes(resolvedStatus)} /></div></>}
-          <div className="space-y-2 sm:col-span-2"><Label>Motif de la décision</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Expliquez votre décision…" /></div>
-          {error && <p className="sm:col-span-2 text-xs text-destructive">{error}</p>}
-        </div>
-        <DialogFooter><DialogClose asChild><Button variant="outline">Plus tard</Button></DialogClose><Button onClick={submit} disabled={isPending(`correction:${request.id}:resolve`)}>Enregistrer la décision</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string; studentId?: string; trigger?: React.ReactNode }) {
-  const { state, viewerId: teacherId, saveAttendance, isPending } = useAcademicData();
+  const { state, saveAttendance, isPending } = useAcademicData();
   const session = state.sessions.find((item) => item.id === sessionId)!;
   const roster = getSessionRoster(state, sessionId);
   const initial = roster.find((item) => item.student.id === studentId);
@@ -150,6 +108,16 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
   const [correctionReason, setCorrectionReason] = useState("");
   const [error, setError] = useState("");
   const selectedAttendance = roster.find((item) => item.student.id === selectedId)?.attendance;
+
+  function selectStudent(value: string) {
+    const attendance = roster.find((item) => item.student.id === value)?.attendance;
+    setSelectedId(value);
+    setStatus(attendance?.status ?? "PRESENT");
+    setTime(attendance?.checkedInAt ?? session.startTime);
+    setNote(attendance?.note ?? "");
+    setCorrectionReason("");
+    setError("");
+  }
 
   async function submit() {
     if (!selectedId) {
@@ -166,7 +134,7 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
       source: "MANUAL",
       note,
       correctionReason,
-    }, teacherId);
+    });
     if (result.ok) {
       setError("");
       setOpen(false);
@@ -179,13 +147,13 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger ?? <Button><Plus /> Saisie manuelle</Button>}</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>{initial?.attendance ? "Corriger une présence" : "Enregistrer une présence"}</DialogTitle><DialogDescription>Les arrivées après {session.lateThresholdMinutes ?? 10} minutes sont automatiquement classées en retard.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{session.status === "COMPLETED" || selectedAttendance ? "Corriger une présence" : "Enregistrer une présence"}</DialogTitle><DialogDescription>Les arrivées après {session.lateThresholdMinutes ?? 10} minutes sont automatiquement classées en retard.</DialogDescription></DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label>Étudiant</Label><Select value={selectedId} onValueChange={setSelectedId} disabled={Boolean(studentId)}><SelectTrigger className="w-full" aria-label="Étudiant"><SelectValue placeholder="Sélectionner un étudiant" /></SelectTrigger><SelectContent>{roster.map(({ student }) => <SelectItem key={student.id} value={student.id}>{student.name} · {student.matricule}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Étudiant</Label><Select value={selectedId} onValueChange={selectStudent} disabled={Boolean(studentId)}><SelectTrigger className="w-full" aria-label="Étudiant"><SelectValue placeholder="Sélectionner un étudiant" /></SelectTrigger><SelectContent>{roster.map(({ student }) => <SelectItem key={student.id} value={student.id}>{student.name} · {student.matricule}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Statut</Label><Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}><SelectTrigger className="w-full" aria-label="Statut"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PRESENT">Présent</SelectItem><SelectItem value="LATE">En retard</SelectItem><SelectItem value="ABSENT">Absent</SelectItem><SelectItem value="EXCUSED">Absence justifiée</SelectItem></SelectContent></Select></div>
           <div className="space-y-2"><Label>Heure de pointage</Label><Input type="time" value={time} onChange={(event) => setTime(event.target.value)} disabled={!["PRESENT", "LATE"].includes(status)} /></div>
           <div className="space-y-2 sm:col-span-2"><Label>Note {status === "EXCUSED" && "(obligatoire)"}</Label><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Contexte ou justificatif" /></div>
-          {session.status === "COMPLETED" && selectedAttendance && <div className="space-y-2 sm:col-span-2"><Label>Motif de correction</Label><Textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Expliquez pourquoi l’historique est modifié" /></div>}
+          {session.status === "COMPLETED" && <div className="space-y-2 sm:col-span-2"><Label>Motif de correction</Label><Textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Expliquez pourquoi l’historique est modifié" /><p className="text-xs text-muted-foreground">Obligatoire pour toute modification après clôture.</p></div>}
           {error && <p className="sm:col-span-2 text-xs text-destructive">{error}</p>}
         </div>
         <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button onClick={submit} disabled={!selectedId || isPending(`attendance:${sessionId}:${selectedId}`)}><UserCheck /> Enregistrer</Button></DialogFooter>

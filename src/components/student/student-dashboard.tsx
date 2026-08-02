@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { getStudentHistory, getStudentSessions, getStudentStats } from "@/lib/student-domain";
+import { academicDateTimeKey, currentAcademicDateTimeKey } from "@/lib/academic-calendar";
 
 export function StudentDashboard() {
   const { state, viewerId: studentId } = useAcademicData();
@@ -25,31 +26,44 @@ export function StudentDashboard() {
   const stats = getStudentStats(state, studentId);
   const sessions = getStudentSessions(state, studentId);
   const history = getStudentHistory(state, studentId).slice(0, 4);
-  const active = sessions.find((session) => session.status === "ACTIVE");
+  const student = state.users.find((user) => user.id === studentId);
+  const nowKey = currentAcademicDateTimeKey();
+  const active = sessions.find((session) =>
+    session.status === "ACTIVE" && academicDateTimeKey(session.date, session.endTime) > nowKey,
+  );
   const activeAttendance = active ? state.attendances.find(
     (item) => item.sessionId === active.id && item.studentId === studentId,
   ) : undefined;
-  const upcoming = sessions.filter((session) => session.status === "SCHEDULED").slice(0, 3);
+  const upcoming = sessions.filter((session) =>
+    session.status === "SCHEDULED" && academicDateTimeKey(session.date, session.startTime) > nowKey,
+  ).slice(0, 3);
 
   return (
     <div className="space-y-7">
       <PageHeader
-        title="Bonjour Sarah"
+        title={`Bonjour ${student?.name.split(" ")[0] ?? ""}`.trim()}
         description="Suivez vos cours, vos pointages et votre progression académique."
         action={<Button asChild><Link href="/student/check-in"><QrCode /> Pointer maintenant</Link></Button>}
       />
 
-      {stats.completedCount > 0 && stats.attendanceRate < 80 && (
+      {stats.eligibleCount > 0 && stats.attendanceRate < 80 && (
         <div className="flex gap-3 border border-amber-200 bg-amber-50 p-4 text-amber-900">
           <ShieldAlert className="size-5 shrink-0" />
           <div><p className="text-sm font-semibold">Votre taux de présence est sous 80 %</p><p className="mt-1 text-xs leading-5 text-amber-800/80">Consultez votre historique et signalez rapidement toute donnée incorrecte.</p></div>
         </div>
       )}
 
+      {stats.missingCount > 0 && (
+        <div className="flex gap-3 border border-sky-200 bg-sky-50 p-4 text-sky-950">
+          <ShieldAlert className="size-5 shrink-0" />
+          <div><p className="text-sm font-semibold">{stats.missingCount} résultat(s) à vérifier</p><p className="mt-1 text-xs leading-5 text-sky-900/75">Ces séances sont clôturées mais aucune présence Neon n’est associée à votre profil. Elles ne sont pas comptées dans votre taux.</p></div>
+        </div>
+      )}
+
       <section className="grid gap-px overflow-hidden border bg-border sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Taux de présence", value: `${stats.attendanceRate}%`, detail: `${stats.completedCount} séances clôturées`, icon: UserCheck },
-          { label: "Ponctualité", value: `${stats.punctualityRate}%`, detail: "hors absences justifiées", icon: CheckCircle2 },
+          { label: "Taux de présence", value: stats.eligibleCount ? `${stats.attendanceRate}%` : "—", detail: `${stats.recordedCount} résultat(s) comptabilisé(s)`, icon: UserCheck },
+          { label: "Ponctualité", value: stats.attendedCount ? `${stats.punctualityRate}%` : "—", detail: "sur les présences enregistrées", icon: CheckCircle2 },
           { label: "Retards", value: stats.lateCount, detail: "comptés comme présences", icon: TimerReset },
           { label: "Absences", value: stats.absentCount, detail: `${stats.excusedCount} justifiée(s) exclue(s)`, icon: ShieldAlert },
         ].map((item, index) => (
@@ -95,10 +109,14 @@ export function StudentDashboard() {
         <section>
           <div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold">Derniers résultats</h2><p className="text-xs text-muted-foreground">Votre historique récent</p></div><Button asChild variant="ghost" size="sm"><Link href="/student/history">Tout voir <ArrowRight /></Link></Button></div>
           <div className="divide-y border bg-background">
-            {history.map(({ session, attendance }) => <Link key={session.id} href="/student/history" className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/40"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{session.courseName}</p><p className="mt-1 text-xs text-muted-foreground">{session.date} · {attendance?.checkedInAt ?? "Non pointé"}</p></div><StatusBadge status={attendance?.status ?? "ABSENT"} /></Link>)}
+            {history.map(({ session, attendance }) => <Link key={session.id} href="/student/history" className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/40"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{session.courseName}</p><p className="mt-1 text-xs text-muted-foreground">{session.date} · {attendance?.checkedInAt ?? "Résultat manquant"}</p></div>{attendance ? <StatusBadge status={attendance.status} /> : <MissingStatus />}</Link>)}
           </div>
         </section>
       </div>
     </div>
   );
+}
+
+function MissingStatus() {
+  return <span className="inline-flex items-center border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800">À vérifier</span>;
 }

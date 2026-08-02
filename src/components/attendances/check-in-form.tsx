@@ -26,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 type FlowState = "idle" | "requesting" | "scanning" | "preview" | "success" | "error";
 
 export function CheckInForm() {
-  const { state, viewerId: studentId, validateStudentCode, submitStudentCheckIn } = useAcademicData();
+  const { state, viewerId: studentId, pending, validateStudentCode, submitStudentCheckIn } = useAcademicData();
   const reduceMotion = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -96,16 +96,33 @@ export function CheckInForm() {
 
   async function submitCode(event: React.FormEvent) {
     event.preventDefault();
-    acceptValidation(await validateStudentCode(code, "STUDENT_CODE"));
+    setMessage("");
+    try {
+      acceptValidation(await validateStudentCode(code, "STUDENT_CODE"));
+    } catch {
+      setMessage("La vérification est momentanément indisponible. Réessayez.");
+      setFlow("error");
+    }
   }
 
   async function confirm() {
     if (!preview) return;
-    const result = await submitStudentCheckIn({ ...preview, confirmedAt: Date.now() });
+    let result: Awaited<ReturnType<typeof submitStudentCheckIn>>;
+    try {
+      result = await submitStudentCheckIn({ ...preview, confirmedAt: Date.now() });
+    } catch {
+      setMessage("Le pointage n’a pas pu être confirmé. Votre aperçu reste disponible pour réessayer.");
+      setFlow("preview");
+      return;
+    }
     if (!result.ok) {
       setMessage(result.message);
-      setFlow("error");
-      setPreview(null);
+      if (result.code === "NETWORK_ERROR") {
+        setFlow("preview");
+      } else {
+        setFlow("error");
+        setPreview(null);
+      }
       return;
     }
     setAlreadyRecorded(result.alreadyRecorded);
@@ -144,9 +161,10 @@ export function CheckInForm() {
               <Detail icon={Clock3} label="Horaire" value={`${session.startTime} – ${session.endTime}`} />
               <Detail icon={MapPin} label="Salle" value={session.room} />
             </div>
+            {message && <Alert variant="destructive" className="m-4 mb-0"><AlertTitle>Confirmation non enregistrée</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>}
             <div className="flex flex-col-reverse gap-2 border-t p-4 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={reset}>Annuler</Button>
-              <Button onClick={confirm}><CheckCircle2 /> Confirmer ma présence</Button>
+              <Button onClick={confirm} disabled={pending}><CheckCircle2 /> {pending ? "Confirmation…" : "Confirmer ma présence"}</Button>
             </div>
           </motion.section>
         )}
@@ -190,7 +208,7 @@ export function CheckInForm() {
                 <form onSubmit={submitCode} className="border bg-background p-5 sm:p-6">
                   <Label htmlFor="student-session-code">Code affiché par l’enseignant</Label>
                   <Input id="student-session-code" value={code} onChange={(event) => { setCode(event.target.value.toLocaleUpperCase("fr")); setMessage(""); setFlow("idle"); }} placeholder="PP-XXXXXXX" className="metric-number mt-2 h-12 text-center text-lg uppercase" required />
-                  <Button type="submit" className="mt-4 w-full">Vérifier le code</Button>
+                  <Button type="submit" className="mt-4 w-full" disabled={pending}>{pending ? "Vérification…" : "Vérifier le code"}</Button>
                 </form>
               </TabsContent>
             </Tabs>

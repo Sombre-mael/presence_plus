@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { getSessionRoster } from "@/lib/academic-domain";
+import { academicDateTimeKey, currentAcademicDateTimeKey } from "@/lib/academic-calendar";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
@@ -42,9 +43,10 @@ export function TeacherSessionDetail({ id }: { id: string }) {
   const pending = roster.length - records.length;
   const present = records.filter((item) => ["PRESENT", "LATE"].includes(item.attendance!.status)).length;
   const rate = roster.length ? Math.round(present / roster.length * 100) : 0;
+  const activeExpired = session.status === "ACTIVE" && academicDateTimeKey(session.date, session.endTime) <= currentAcademicDateTimeKey();
 
   async function start() {
-    const result = await startSession(id, teacherId);
+    const result = await startSession(id);
     if (result.ok) router.push(`/teacher/sessions/${id}/qr`);
   }
 
@@ -71,12 +73,12 @@ export function TeacherSessionDetail({ id }: { id: string }) {
 
       {session.status === "ACTIVE" && (
         <ActionBand
-          title="Pointage en cours"
-          description={`${pending} étudiant(s) n’ont pas encore pointé. La clôture les marquera absents.`}
+          title={activeExpired ? "Horaire terminé, clôture requise" : "Pointage en cours"}
+          description={activeExpired ? `${pending} étudiant(s) sans pointage seront marqués absents à la clôture.` : `${pending} étudiant(s) n’ont pas encore pointé. La clôture les marquera absents.`}
           actions={<>
             <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/attendances`}><UserCheck /> Présences</Link></Button>
-            <Button asChild><Link href={`/teacher/sessions/${id}/qr`}><QrCode /> QR code</Link></Button>
-            <CloseDialog count={pending} mutating={isPending(`session:${id}:complete`)} onConfirm={() => completeSession(id, teacherId)} />
+            {!activeExpired && <Button asChild><Link href={`/teacher/sessions/${id}/qr`}><QrCode /> QR code</Link></Button>}
+            <CloseDialog count={pending} mutating={isPending(`session:${id}:complete`)} onConfirm={() => completeSession(id)} />
           </>}
         />
       )}
@@ -103,7 +105,7 @@ export function TeacherSessionDetail({ id }: { id: string }) {
         <div className="border bg-background">
           <div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">Derniers pointages</h2><p className="mt-1 text-xs text-muted-foreground">Les arrivées les plus récentes</p></div><Button asChild variant="ghost" size="sm"><Link href={`/teacher/sessions/${id}/attendances`}>Voir la liste</Link></Button></div>
           <div className="divide-y">
-            {records.slice(0, 5).map(({ student, attendance }) => <div key={student.id} className="flex items-center gap-3 p-4"><span className="flex size-9 items-center justify-center bg-muted text-xs font-semibold">{student.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{student.name}</p><p className="text-xs text-muted-foreground">{student.matricule} · {attendance?.checkedInAt ?? "Sans heure"}</p></div><StatusBadge status={attendance!.status} /></div>)}
+            {records.sort((a, b) => (b.attendance?.checkedInAt ?? "").localeCompare(a.attendance?.checkedInAt ?? "")).slice(0, 5).map(({ student, attendance }) => <div key={student.id} className="flex items-center gap-3 p-4"><span className="flex size-9 items-center justify-center bg-muted text-xs font-semibold">{student.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{student.name}</p><p className="text-xs text-muted-foreground">{student.matricule} · {attendance?.checkedInAt ?? "Sans heure"}</p></div><StatusBadge status={attendance!.status} /></div>)}
             {!records.length && <p className="p-8 text-center text-sm text-muted-foreground">Aucun pointage enregistré.</p>}
           </div>
         </div>
@@ -127,7 +129,7 @@ function CancelDialog({ reason, setReason, onConfirm, pending }: { reason: strin
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   async function confirm() { const result = await onConfirm(); if (result.ok) { setOpen(false); setError(""); } else setError(result.message); }
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline"><XCircle /> Annuler la séance</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Annuler cette séance ?</DialogTitle><DialogDescription>Elle restera visible dans l’historique. Un motif est obligatoire pour informer les étudiants.</DialogDescription></DialogHeader><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Motif de l’annulation" aria-label="Motif de l’annulation" />{error && <p className="text-xs text-destructive">{error}</p>}<DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Retour</Button><Button variant="destructive" disabled={pending} onClick={confirm}>{pending ? "Annulation..." : "Confirmer l’annulation"}</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline"><XCircle /> Annuler la séance</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Annuler cette séance ?</DialogTitle><DialogDescription>Elle restera visible dans l’historique. Un motif est obligatoire pour informer les étudiants.</DialogDescription></DialogHeader><Textarea value={reason} onChange={(event) => { setReason(event.target.value); setError(""); }} placeholder="Motif de l’annulation" aria-label="Motif de l’annulation" aria-invalid={Boolean(error)} /><p className="text-xs text-muted-foreground">5 caractères minimum</p>{error && <p className="text-xs text-destructive">{error}</p>}<DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Retour</Button><Button variant="destructive" disabled={pending || reason.trim().length < 5} onClick={confirm}>{pending ? "Annulation..." : "Confirmer l’annulation"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function CloseDialog({ count, onConfirm, mutating }: { count: number; onConfirm: () => Promise<{ ok: boolean; message: string }>; mutating: boolean }) {

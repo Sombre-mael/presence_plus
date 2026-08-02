@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { AlertTriangle, Bell, ChevronDown, LogOut, RotateCcw } from "lucide-react";
-import type { UserSummary } from "@/types";
+import type { Role, UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
 import { clearDemoViewerAction } from "@/actions/demo-session.actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,25 +33,28 @@ const labels: Record<string, string> = {
   edit: "Modifier",
   qr: "QR code",
   attendances: "Présences",
+  corrections: "Demandes de correction",
   "check-in": "Pointage",
   history: "Historique",
   schedule: "Mon planning",
 };
 
 function getBreadcrumb(pathname: string) {
-  return pathname
-    .split("/")
-    .filter(Boolean)
-    .filter((segment) => !["admin", "teacher", "student"].includes(segment))
-    .map((segment) => labels[segment] ?? (segment.startsWith("session-") ? "Détail" : segment));
+  const segments = pathname.split("/").filter(Boolean);
+  return segments.slice(1).map((segment, index) => ({
+    label: labels[segment] ?? "Détail",
+    href: `/${segments.slice(0, index + 2).join("/")}`,
+  }));
 }
 
 export function Topbar({
   user,
+  role,
   anomalies = [],
   onResetDemo,
 }: {
   user: UserSummary;
+  role: Role;
   anomalies?: AdminAnomaly[];
   onResetDemo?: () => void;
 }) {
@@ -59,6 +62,11 @@ export function Topbar({
   const router = useRouter();
   const [leaving, startLeaving] = useTransition();
   const breadcrumb = getBreadcrumb(pathname);
+  const notificationHref = role === "ADMIN"
+    ? "/admin/sessions"
+    : role === "TEACHER"
+      ? "/teacher/corrections"
+      : "/student/history";
   const initials = user.name
     .split(" ")
     .map((part) => part[0])
@@ -68,10 +76,18 @@ export function Topbar({
   return (
     <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{breadcrumb.at(-1) ?? "Presence Plus"}</p>
-        <p className="hidden truncate text-xs text-muted-foreground sm:block">
-          Presence Plus{breadcrumb.length ? ` / ${breadcrumb.join(" / ")}` : ""}
-        </p>
+        <p className="truncate text-sm font-medium">{breadcrumb.at(-1)?.label ?? "Presence Plus"}</p>
+        <nav className="hidden truncate text-xs text-muted-foreground sm:flex" aria-label="Fil d'Ariane">
+          <Link href={`/${role.toLowerCase()}/dashboard`} className="hover:text-foreground">Presence Plus</Link>
+          {breadcrumb.map((item, index) => (
+            <span key={item.href} className="min-w-0 truncate">
+              <span aria-hidden="true"> / </span>
+              {index === breadcrumb.length - 1
+                ? <span aria-current="page">{item.label}</span>
+                : <Link href={item.href} className="hover:text-foreground">{item.label}</Link>}
+            </span>
+          ))}
+        </nav>
       </div>
 
       <div className="flex items-center gap-1">
@@ -103,6 +119,12 @@ export function Topbar({
                 </Link>
               </DropdownMenuItem>
             ))}
+            {anomalies.length > 4 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild><Link href={notificationHref}>Tout consulter</Link></DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>

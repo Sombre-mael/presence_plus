@@ -43,6 +43,7 @@ export type CheckInErrorCode =
   | "WRONG_PROMOTION"
   | "ALREADY_RECORDED"
   | "PREVIEW_EXPIRED"
+  | "NETWORK_ERROR"
   | "STUDENT_INACTIVE";
 
 export interface CheckInPreview {

@@ -42,7 +42,6 @@ export function BrandLoader({
         <p className={cn("font-semibold", compact ? "text-sm" : "text-base")}>Presence Plus</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
       </div>
-      <span className="sr-only">{label}</span>
     </div>
   );
 }

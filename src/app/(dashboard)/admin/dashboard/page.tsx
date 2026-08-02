@@ -8,17 +8,22 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { currentAcademicDate, formatAcademicDay } from "@/lib/academic-calendar";
 
 const statIcons = [CircleUserRound, Users, CalendarDays, GraduationCap];
 
 export default function AdminDashboardPage() {
   const { state, stats, anomalies } = useAdminData();
   const reduceMotion = useReducedMotion();
-  const recentSessions = state.sessions.slice(0, 4);
+  const today = currentAcademicDate();
+  const recentSessions = [...state.sessions]
+    .filter((session) => session.date <= today || session.status === "ACTIVE")
+    .sort((a, b) => `${b.date}T${b.startTime}`.localeCompare(`${a.date}T${a.startTime}`))
+    .slice(0, 4);
   const metrics = [
     { label: "Comptes actifs", value: stats.activeUsers, detail: `${stats.totalUsers} comptes au total`, href: "/admin/users" },
     { label: "Présence moyenne", value: `${stats.attendanceRate}%`, detail: "sessions réalisées", href: "/admin/statistics" },
-    { label: "Sessions aujourd’hui", value: stats.sessionsToday, detail: `${stats.activeSessions} en cours`, href: "/admin/sessions?date=2026-07-25" },
+    { label: "Sessions aujourd’hui", value: stats.sessionsToday, detail: `${stats.activeSessions} en cours`, href: `/admin/sessions?date=${today}` },
     { label: "Promotions", value: stats.promotionCount, detail: `${stats.studentCount} étudiants enregistrés`, href: "/admin/promotions" },
   ];
 
@@ -90,10 +95,13 @@ export default function AdminDashboardPage() {
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{session.courseCode} · {session.promotion} · {session.teacher}</p>
                 </div>
-                <p className="text-xs text-muted-foreground">{session.date} · {session.startTime}</p>
+                <p className="text-xs text-muted-foreground">{formatAcademicDay(session.date, { day: "2-digit", month: "short", year: "numeric" })} · {session.startTime}</p>
                 <div className="flex justify-start sm:justify-end"><StatusBadge status={session.status} /></div>
               </Link>
             ))}
+            {!recentSessions.length && (
+              <div className="p-8 text-center text-sm text-muted-foreground">Aucune session récente à superviser.</div>
+            )}
           </div>
         </section>
 

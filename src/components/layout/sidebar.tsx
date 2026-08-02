@@ -18,6 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
+  MessageSquareText,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { Role } from "@/types";
@@ -51,6 +52,7 @@ const navigation: Record<Role, NavItem[]> = {
   TEACHER: [
     { href: "/teacher/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { href: "/teacher/sessions", label: "Mes sessions", icon: CalendarCheck },
+    { href: "/teacher/corrections", label: "Demandes de correction", icon: MessageSquareText },
   ],
   STUDENT: [
     { href: "/student/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
@@ -64,11 +66,14 @@ interface SidebarProps {
   mobile?: boolean;
   collapsed?: boolean;
   onToggle?: () => void;
+  syncStatus?: "synced" | "syncing" | "error";
 }
 
-export function Sidebar({ role, mobile = false, collapsed = false, onToggle }: SidebarProps) {
+export function Sidebar({ role, mobile = false, collapsed = false, onToggle, syncStatus = "synced" }: SidebarProps) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
+  const primaryHref = role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in";
+  const primaryActive = pathname === primaryHref;
 
   const content = (
     <div className="flex h-full flex-col">
@@ -86,8 +91,8 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle }: S
           <div className="pb-3">
             {mobile ? (
               <SheetClose asChild>
-                <Button asChild className="w-full">
-                  <Link href={role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in"}>
+                <Button asChild className="w-full" variant={primaryActive ? "secondary" : "default"}>
+                  <Link href={primaryHref} aria-current={primaryActive ? "page" : undefined}>
                     {role === "TEACHER" ? <QrCode /> : <ClipboardCheck />}
                     {role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}
                   </Link>
@@ -96,9 +101,10 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle }: S
             ) : collapsed ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button asChild size="icon" className="w-full">
+                  <Button asChild size="icon" className="w-full" variant={primaryActive ? "secondary" : "default"}>
                     <Link
-                      href={role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in"}
+                      href={primaryHref}
+                      aria-current={primaryActive ? "page" : undefined}
                       aria-label={role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}
                     >
                       {role === "TEACHER" ? <QrCode /> : <ClipboardCheck />}
@@ -108,8 +114,8 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle }: S
                 <TooltipContent side="right">{role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}</TooltipContent>
               </Tooltip>
             ) : (
-              <Button asChild className="w-full">
-                <Link href={role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in"}>
+              <Button asChild className="w-full" variant={primaryActive ? "secondary" : "default"}>
+                <Link href={primaryHref} aria-current={primaryActive ? "page" : undefined}>
                   {role === "TEACHER" ? <QrCode /> : <ClipboardCheck />}
                   {role === "TEACHER" ? "Nouvelle session" : "Pointer maintenant"}
                 </Link>
@@ -161,8 +167,10 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle }: S
         {!collapsed && <div className="flex items-center gap-3 rounded-md bg-muted/60 p-3">
           <School className="size-4 text-primary" />
           <div>
-            <p className="text-xs font-medium">Année académique</p>
-            <p className="text-xs text-muted-foreground">2025-2026</p>
+            <p className="text-xs font-medium">Données académiques</p>
+            <p className={cn("text-xs", syncStatus === "error" ? "text-red-600" : "text-muted-foreground")}>
+              {syncStatus === "error" ? "Synchronisation interrompue" : syncStatus === "syncing" ? "Synchronisation en cours" : "Synchronisées avec Neon"}
+            </p>
           </div>
         </div>}
         {onToggle && (

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { cleanupSessionFixture, createActiveSessionFixture, futureAcademicDate, selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
@@ -54,6 +55,27 @@ test("le QR actif tourne et la feuille de présence est complète", async ({ pag
     await expect(page.getByRole("heading", { name: "Présences de la session" })).toBeVisible();
     await expect(page.getByText("Junior Mpoyi")).toBeVisible();
     await expect(page.getByText("Sarah Mbuyi")).toBeVisible();
+  } finally {
+    await cleanupSessionFixture(sessionId);
+  }
+});
+
+test("l’export respecte la recherche et le filtre des pointages en attente", async ({ page }) => {
+  const sessionId = await createActiveSessionFixture();
+  try {
+    await page.goto(`/teacher/sessions/${sessionId}/attendances`);
+    await page.getByPlaceholder("Nom ou matricule...").fill("Sarah");
+    await page.getByRole("combobox").click();
+    await page.getByRole("option", { name: "En attente" }).click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Exporter le résultat" }).click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    expect(path).toBeTruthy();
+    const csv = await readFile(path!, "utf8");
+    expect(csv).toContain("Sarah Mbuyi");
+    expect(csv).toContain("PENDING");
+    expect(csv).not.toContain("Junior Mpoyi");
   } finally {
     await cleanupSessionFixture(sessionId);
   }

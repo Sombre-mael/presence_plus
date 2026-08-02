@@ -52,6 +52,8 @@ function scopes(viewer: DemoViewer) {
           OR: [
             { id: viewer.id },
             { role: "STUDENT", promotion: { courses: { some: { teacherId: viewer.id } } } },
+            { role: "STUDENT", sessionEnrollments: { some: { session: { teacherId: viewer.id } } } },
+            { role: "STUDENT", attendances: { some: { session: { teacherId: viewer.id } } } },
           ],
         }
       : { id: viewer.id };
@@ -72,6 +74,7 @@ function scopes(viewer: DemoViewer) {
       : {
           OR: [
             { promotionId },
+            { enrollments: { some: { studentId: viewer.id } } },
             { attendances: { some: { studentId: viewer.id } } },
             { correctionRequests: { some: { studentId: viewer.id } } },
           ],
@@ -134,10 +137,28 @@ export async function getCoursesForViewer(viewer: DemoViewer): Promise<AcademicD
   }));
 }
 
-export async function getSessionsForViewer(viewer: DemoViewer): Promise<AcademicDataState["sessions"]> {
+interface RepositoryPageOptions<TWhere> {
+  where?: TWhere;
+  skip?: number;
+  take?: number;
+}
+
+function combineWhere<T>(scope: T | undefined, where: T | undefined): T | undefined {
+  if (!scope) return where;
+  if (!where) return scope;
+  return { AND: [scope, where] } as T;
+}
+
+export async function getSessionsForViewer(
+  viewer: DemoViewer,
+  options: RepositoryPageOptions<Prisma.SessionWhereInput> = {},
+): Promise<AcademicDataState["sessions"]> {
+  const where = combineWhere(scopes(viewer).sessions, options.where);
   const sessions = await prisma.session.findMany({
-    where: scopes(viewer).sessions,
+    where,
     orderBy: { scheduledStartAt: "asc" },
+    skip: options.skip,
+    take: options.take,
     include: {
       courses: true,
       teacher: true,
@@ -147,9 +168,15 @@ export async function getSessionsForViewer(viewer: DemoViewer): Promise<Academic
         },
       },
       attendances: { select: { status: true } },
+      enrollments: { select: { studentId: true } },
     },
   });
-  return sessions.map((session) => ({
+  return sessions.map((session) => {
+    const frozenRoster = ["ACTIVE", "COMPLETED"].includes(session.status);
+    const enrolledStudentIds = frozenRoster
+      ? session.enrollments.map((enrollment) => enrollment.studentId)
+      : undefined;
+    return {
     id: session.id,
     name: session.name,
     description: session.description ?? undefined,
@@ -166,20 +193,32 @@ export async function getSessionsForViewer(viewer: DemoViewer): Promise<Academic
     room: session.room,
     status: session.status,
     presentCount: session.attendances.filter((item) => ["PRESENT", "LATE"].includes(item.status)).length,
-    expectedCount: session.promotion.users.length,
+    expectedCount: enrolledStudentIds?.length ?? session.promotion.users.length,
+    enrolledStudentIds,
     lateThresholdMinutes: session.lateThresholdMinutes,
     createdAt: session.createdAt.toISOString(),
     startedAt: session.startedAt?.toISOString(),
     completedAt: session.completedAt?.toISOString(),
     cancelledAt: session.cancelledAt?.toISOString(),
     cancellationReason: session.cancellationReason ?? undefined,
-  }));
+    };
+  });
 }
 
-export async function getAttendancesForViewer(viewer: DemoViewer): Promise<AcademicDataState["attendances"]> {
+export async function countSessionsForViewer(viewer: DemoViewer, where?: Prisma.SessionWhereInput) {
+  return prisma.session.count({ where: combineWhere(scopes(viewer).sessions, where) });
+}
+
+export async function getAttendancesForViewer(
+  viewer: DemoViewer,
+  options: RepositoryPageOptions<Prisma.AttendanceWhereInput> = {},
+): Promise<AcademicDataState["attendances"]> {
+  const where = combineWhere(scopes(viewer).attendances, options.where);
   const attendances = await prisma.attendance.findMany({
-    where: scopes(viewer).attendances,
+    where,
     orderBy: { createdAt: "asc" },
+    skip: options.skip,
+    take: options.take,
     include: {
       student: true,
       correctedBy: { select: { name: true } },
@@ -204,6 +243,10 @@ export async function getAttendancesForViewer(viewer: DemoViewer): Promise<Acade
     createdAt: attendance.createdAt.toISOString(),
     updatedAt: attendance.updatedAt.toISOString(),
   }));
+}
+
+export async function countAttendancesForViewer(viewer: DemoViewer, where?: Prisma.AttendanceWhereInput) {
+  return prisma.attendance.count({ where: combineWhere(scopes(viewer).attendances, where) });
 }
 
 export async function getCorrectionsForViewer(viewer: DemoViewer): Promise<AcademicDataState["correctionRequests"]> {
@@ -235,7 +278,7 @@ export async function getAuditLogsForViewer(viewer: DemoViewer): Promise<Academi
   if (viewer.role !== "ADMIN") return [];
   const logs = await prisma.auditLog.findMany({
     orderBy: { createdAt: "desc" },
-    take: 250,
+    take: 50,
     include: { actor: { select: { name: true } } },
   });
   return logs.map((log) => ({

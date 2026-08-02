@@ -24,10 +24,11 @@ describe("server QR tokens", () => {
   it("signs a preview receipt that expires after 60 seconds", () => {
     const now = 2_000_000;
     const token = createServerQrToken("session-1", now).value;
-    const preview = createPreviewReceipt("session-1", "u4", token, now);
+    const preview = createPreviewReceipt("session-1", "u4", token, "QR", now);
 
-    expect(verifyPreviewReceipt("session-1", "u4", token, preview.receipt, now + 59_000)).toBe(true);
-    expect(verifyPreviewReceipt("session-1", "u4", token, preview.receipt, now + 61_000)).toBe(false);
-    expect(verifyPreviewReceipt("session-1", "u5", token, preview.receipt, now)).toBe(false);
+    expect(verifyPreviewReceipt("session-1", "u4", token, "QR", preview.receipt, now + 59_000)).toBe(true);
+    expect(verifyPreviewReceipt("session-1", "u4", token, "QR", preview.receipt, now + 61_000)).toBe(false);
+    expect(verifyPreviewReceipt("session-1", "u5", token, "QR", preview.receipt, now)).toBe(false);
+    expect(verifyPreviewReceipt("session-1", "u4", token, "STUDENT_CODE", preview.receipt, now)).toBe(false);
   });
 });

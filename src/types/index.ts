@@ -55,6 +55,7 @@ export interface SessionSummary {
   completedAt?: string;
   cancelledAt?: string;
   cancellationReason?: string;
+  enrolledStudentIds?: string[];
 }
 
 export interface AttendanceRecord {

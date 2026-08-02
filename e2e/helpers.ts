@@ -33,6 +33,10 @@ export async function createActiveSessionFixture() {
       `INSERT INTO "Session" (id, name, "courseId", "promotionId", "teacherId", status, "scheduledStartAt", "scheduledEndAt", "startedAt", room, "lateThresholdMinutes") VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6, $7, $6, $8, $9)`,
       [id, "Session active Playwright", course.rows[0].id, course.rows[0].promotionId, course.rows[0].teacherId, start, end, "E2E", 10],
     );
+    await pool.query(
+      `INSERT INTO "SessionEnrollment" (id, "sessionId", "studentId") SELECT 'e2e-enrollment-' || $1 || '-' || id, $1, id FROM "User" WHERE role = 'STUDENT' AND status = 'ACTIVE' AND "promotionId" = $2`,
+      [id, course.rows[0].promotionId],
+    );
     return id;
   } finally {
     await pool.end();
@@ -61,11 +65,15 @@ export async function cleanupSessionFixture(id: string) {
 export async function latestPendingCorrectionFixture() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const request = await pool.query<{ id: string; sessionId: string }>(
-      `SELECT id, "sessionId" FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' ORDER BY "createdAt" DESC LIMIT 1`,
-      ["u4"],
-    );
-    const row = request.rows[0];
+    let row: { id: string; sessionId: string } | undefined;
+    for (let attempt = 0; attempt < 10 && !row; attempt += 1) {
+      const request = await pool.query<{ id: string; sessionId: string }>(
+        `SELECT id, "sessionId" FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' AND reason LIKE '[E2E]%' ORDER BY "createdAt" DESC LIMIT 1`,
+        ["u4"],
+      );
+      row = request.rows[0];
+      if (!row) await new Promise((resolve) => setTimeout(resolve, 500));
+    }
     if (!row) throw new Error("La demande de correction E2E n'a pas été créée.");
     const attendance = await pool.query<{
       id: string;
@@ -81,6 +89,29 @@ export async function latestPendingCorrectionFixture() {
     );
     return { ...row, attendance: attendance.rows[0] ?? null };
   } finally {
+    await pool.end();
+  }
+}
+
+export async function cleanupPendingCorrectionFixtures() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const stale = await client.query<{ id: string }>(
+      `SELECT id FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' AND (reason LIKE '[E2E]%' OR reason = $2)`,
+      ["u4", "J’étais présent dès le début de cette séance."],
+    );
+    for (const request of stale.rows) {
+      await client.query(`DELETE FROM "AuditLog" WHERE "entityId" = $1`, [request.id]);
+      await client.query(`DELETE FROM "AttendanceCorrectionRequest" WHERE id = $1`, [request.id]);
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
     await pool.end();
   }
 }

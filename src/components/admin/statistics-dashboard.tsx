@@ -18,6 +18,7 @@ import { getAttendanceTrend, getFilteredSessions } from "@/lib/admin-domain";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -28,10 +29,12 @@ import {
 import type { StatisticsPeriod } from "@/types/admin";
 
 export function StatisticsDashboard() {
-  const { state, notify } = useAdminData();
+  const { state, notify, resetData } = useAdminData();
   const [period, setPeriod] = useState<StatisticsPeriod>("30D");
   const [promotionId, setPromotionId] = useState("");
   const [courseId, setCourseId] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const sessions = useMemo(
     () => getFilteredSessions(state, { period, promotionId, courseId }),
     [courseId, period, promotionId, state],
@@ -40,7 +43,7 @@ export function StatisticsDashboard() {
     () => getAttendanceTrend(state, { period, promotionId, courseId }),
     [courseId, period, promotionId, state],
   );
-  const completed = sessions.filter((session) => session.status !== "SCHEDULED");
+  const completed = sessions.filter((session) => session.status === "COMPLETED");
   const completedIds = new Set(completed.map((session) => session.id));
   const completedRecords = state.attendances.filter((record) => completedIds.has(record.sessionId));
   const excused = completedRecords.filter((record) => record.status === "EXCUSED").length;
@@ -50,8 +53,7 @@ export function StatisticsDashboard() {
   const lateCount = trend.reduce((total, point) => total + point.late, 0);
 
   const comparison = state.promotions.map((promotion) => {
-    const courseIds = state.courses.filter((course) => course.promotionId === promotion.id).map((course) => course.id);
-    const promotionSessions = completed.filter((session) => courseIds.includes(session.courseId));
+    const promotionSessions = completed.filter((session) => session.promotionId === promotion.id);
     const sessionIds = new Set(promotionSessions.map((session) => session.id));
     const records = state.attendances.filter((record) => sessionIds.has(record.sessionId));
     const promotionExpected = Math.max(0, promotionSessions.reduce((total, session) => total + session.expectedCount, 0) - records.filter((record) => record.status === "EXCUSED").length);
@@ -59,12 +61,29 @@ export function StatisticsDashboard() {
     return { name: promotion.name, taux: promotionExpected ? Math.round((promotionPresent / promotionExpected) * 100) : 0 };
   }).filter((item) => item.taux > 0);
 
-  function exportCsv() {
+  async function exportCsv() {
+    setExporting(true);
+    setExportError("");
     const params = new URLSearchParams({ kind: "statistics", period });
     if (promotionId) params.set("promotionId", promotionId);
     if (courseId) params.set("courseId", courseId);
-    window.location.assign(`/api/exports?${params}`);
-    notify("Export CSV généré selon les filtres actifs.");
+    try {
+      const response = await fetch(`/api/exports?${params}`);
+      if (!response.ok) throw new Error("EXPORT_FAILED");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `statistiques-presence-${period.toLowerCase()}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      await resetData();
+      notify("Export CSV généré selon les filtres actifs.");
+    } catch {
+      setExportError("L’export n’a pas pu être généré depuis Neon. Réessayez.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const metrics = [
@@ -76,7 +95,9 @@ export function StatisticsDashboard() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Statistiques" description="Explorez les tendances de présence et exportez exactement la vue affichée." action={<Button onClick={exportCsv} disabled={!sessions.length}><Download />Exporter en CSV</Button>} />
+      <PageHeader title="Statistiques" description="Explorez les tendances de présence et exportez exactement la vue affichée." action={<Button onClick={exportCsv} disabled={!sessions.length || exporting}><Download />{exporting ? "Génération..." : "Exporter en CSV"}</Button>} />
+
+      {exportError && <Alert variant="destructive"><AlertDescription>{exportError}</AlertDescription></Alert>}
 
       <div className="grid gap-3 border bg-background p-4 md:grid-cols-3">
         <Select value={period} onValueChange={(value) => setPeriod(value as StatisticsPeriod)}>
@@ -101,6 +122,9 @@ export function StatisticsDashboard() {
         <div className="border bg-background p-4">
           <div className="mb-5"><h2 className="font-semibold">Évolution du taux de présence</h2><p className="mt-1 text-xs text-muted-foreground">Chaque point représente une session réalisée.</p></div>
           <div className="h-72 w-full">
+            {!trend.length ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Aucune session clôturée sur cette période.</div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -110,12 +134,16 @@ export function StatisticsDashboard() {
                 <Line type="monotone" dataKey="rate" stroke="#07864b" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="border bg-background p-4">
           <div className="mb-5"><h2 className="font-semibold">Comparaison par promotion</h2><p className="mt-1 text-xs text-muted-foreground">Taux moyen sur la sélection.</p></div>
           <div className="h-72 w-full">
+            {!comparison.length ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Aucune comparaison disponible.</div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={comparison} layout="vertical" margin={{ top: 8, right: 12, left: 20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -125,6 +153,7 @@ export function StatisticsDashboard() {
                 <Bar dataKey="taux" fill="#65b6d6" radius={[0, 2, 2, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </section>

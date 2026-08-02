@@ -89,11 +89,10 @@ export function validatePromotion(
   const duplicate = state.promotions.some(
     (promotion) =>
       promotion.id !== editingId &&
-      promotion.name.toLocaleLowerCase("fr") === input.name.trim().toLocaleLowerCase("fr") &&
-      promotion.academicYear === input.academicYear,
+      promotion.name.toLocaleLowerCase("fr") === input.name.trim().toLocaleLowerCase("fr"),
   );
   return duplicate
-    ? { ok: false, message: "Cette promotion existe déjà pour cette année.", fieldErrors: { name: "Promotion déjà existante." } }
+    ? { ok: false, message: "Ce nom de promotion est déjà utilisé.", fieldErrors: { name: "Nom déjà utilisé." } }
     : { ok: true, message: editingId ? "Promotion mise à jour." : "Promotion ajoutée." };
 }
 
@@ -128,8 +127,21 @@ export function getUserDeleteBlockers(state: AdminDataState, id: string, current
   if (id === currentUserId) blockers.push("Le compte administrateur actuellement utilisé ne peut pas être supprimé.");
   const assignedCourses = state.courses.filter((course) => course.teacherId === id);
   if (assignedCourses.length) blockers.push(`${assignedCourses.length} cours sont encore affectés à cet enseignant.`);
+  if (state.sessions.some((session) => session.teacherId === id)) {
+    blockers.push("Des sessions sont associées à cet enseignant.");
+  }
   if (state.attendances.some((attendance) => attendance.studentId === id)) {
     blockers.push("Un historique de présence est associé à cet étudiant.");
+  }
+  if (state.sessions.some((session) => session.enrolledStudentIds?.includes(id))) {
+    blockers.push("Cet étudiant appartient à l’effectif figé d’une session.");
+  }
+  if (state.correctionRequests.some((request) =>
+    request.studentId === id || request.teacherId === id || request.resolvedBy === id)) {
+    blockers.push("Des demandes de correction sont associées à ce compte.");
+  }
+  if (state.auditLogs.some((log) => log.actorId === id)) {
+    blockers.push("Ce compte est référencé dans le journal d’activité.");
   }
   return blockers;
 }
@@ -153,9 +165,12 @@ export function getCourseDeleteBlockers(state: AdminDataState, id: string): stri
 
 export function getAdminDashboardStats(state: AdminDataState): AdminDashboardStats {
   const completed = state.sessions.filter((session) =>
-    ["ACTIVE", "COMPLETED"].includes(session.status) && session.expectedCount > 0);
+    session.status === "COMPLETED" && session.expectedCount > 0);
   const present = completed.reduce((total, session) => total + session.presentCount, 0);
-  const expected = completed.reduce((total, session) => total + session.expectedCount, 0);
+  const completedIds = new Set(completed.map((session) => session.id));
+  const excused = state.attendances.filter((attendance) =>
+    completedIds.has(attendance.sessionId) && attendance.status === "EXCUSED").length;
+  const expected = Math.max(0, completed.reduce((total, session) => total + session.expectedCount, 0) - excused);
   return {
     activeUsers: state.users.filter((user) => user.status === "ACTIVE").length,
     totalUsers: state.users.length,
@@ -212,14 +227,12 @@ function periodDays(period: StatisticsFilters["period"]) {
 }
 
 export function getFilteredSessions(state: AdminDataState, filters: StatisticsFilters) {
-  const minimum = addAcademicDays(currentAcademicDate(), -periodDays(filters.period));
-  const promotion = state.promotions.find((item) => item.id === filters.promotionId);
+  const minimum = addAcademicDays(currentAcademicDate(), -(periodDays(filters.period) - 1));
   return state.sessions.filter((session) => {
-    const course = state.courses.find((item) => item.id === session.courseId);
     return (
       session.date >= minimum &&
       (!filters.courseId || session.courseId === filters.courseId) &&
-      (!filters.promotionId || course?.promotionId === filters.promotionId || session.promotion === promotion?.name)
+      (!filters.promotionId || session.promotionId === filters.promotionId)
     );
   });
 }

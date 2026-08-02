@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Menu } from "lucide-react";
 import type { Role, UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
@@ -23,22 +23,18 @@ interface DashboardLayoutProps {
   user: UserSummary;
   anomalies?: AdminAnomaly[];
   onResetDemo?: () => void;
+  initialSidebarCollapsed?: boolean;
+  syncStatus?: "synced" | "syncing" | "error";
 }
 
-export function DashboardLayout({ children, role, user, anomalies = [], onResetDemo }: DashboardLayoutProps) {
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setCollapsed(window.localStorage.getItem(`presence-plus:${role.toLocaleLowerCase()}-sidebar`) === "collapsed");
-    }, 0);
-    return () => window.clearTimeout(timeout);
-  }, [role]);
+export function DashboardLayout({ children, role, user, anomalies = [], onResetDemo, initialSidebarCollapsed = false, syncStatus = "synced" }: DashboardLayoutProps) {
+  const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
 
   function toggleSidebar() {
     setCollapsed((current) => {
       const next = !current;
       window.localStorage.setItem(`presence-plus:${role.toLocaleLowerCase()}-sidebar`, next ? "collapsed" : "expanded");
+      document.cookie = `presence-plus-${role.toLocaleLowerCase()}-sidebar=${next ? "collapsed" : "expanded"}; Path=/; Max-Age=31536000; SameSite=Lax`;
       return next;
     });
   }
@@ -50,7 +46,7 @@ export function DashboardLayout({ children, role, user, anomalies = [], onResetD
           collapsed ? "w-20" : "w-64"
         }`}
       >
-        <Sidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} />
+        <Sidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} syncStatus={syncStatus} />
       </aside>
 
       <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
@@ -66,10 +62,10 @@ export function DashboardLayout({ children, role, user, anomalies = [], onResetD
                 <SheetTitle>Navigation</SheetTitle>
                 <SheetDescription>Menu principal de Presence Plus</SheetDescription>
               </SheetHeader>
-              <Sidebar role={role} mobile />
+              <Sidebar role={role} mobile syncStatus={syncStatus} />
             </SheetContent>
           </Sheet>
-          <Topbar user={user} anomalies={anomalies} onResetDemo={onResetDemo} />
+          <Topbar role={role} user={user} anomalies={anomalies} onResetDemo={onResetDemo} />
         </div>
 
         <main className="mx-auto w-full max-w-[1440px] p-4 sm:p-6 lg:p-8">

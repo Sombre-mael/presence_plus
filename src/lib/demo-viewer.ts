@@ -3,6 +3,8 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { authSecret } from "@/lib/env.server";
+import { DatabaseUnavailableError } from "@/lib/server-errors";
 import type { Role, UserSummary } from "@/types";
 
 export const DEMO_VIEWER_COOKIE = "presence-plus-demo-viewer";
@@ -18,9 +20,7 @@ const roleHomes: Record<Role, string> = {
 };
 
 function signature(id: string) {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) throw new Error("AUTH_SECRET est requis pour le mode demonstration.");
-  return createHmac("sha256", secret).update(id).digest("base64url");
+  return createHmac("sha256", authSecret()).update(id).digest("base64url");
 }
 
 function isAllowedId(value: string): value is DemoViewerId {
@@ -47,12 +47,7 @@ export function roleHome(role: Role) {
 
 export async function getDemoViewer(): Promise<DemoViewer | null> {
   const store = await cookies();
-  let id: DemoViewerId | null = null;
-  try {
-    id = verifyCookie(store.get(DEMO_VIEWER_COOKIE)?.value);
-  } catch {
-    return null;
-  }
+  const id = verifyCookie(store.get(DEMO_VIEWER_COOKIE)?.value);
   if (!id) return null;
 
   let user;
@@ -69,8 +64,8 @@ export async function getDemoViewer(): Promise<DemoViewer | null> {
         promotion: { select: { name: true } },
       },
     });
-  } catch {
-    return null;
+  } catch (error) {
+    throw new DatabaseUnavailableError("Impossible de verifier le profil dans Neon.", { cause: error });
   }
   if (!user) return null;
   return {

@@ -14,18 +14,38 @@ export function QrPanel({ sessionId }: { sessionId: string }) {
   const session = state.sessions.find((item) => item.id === sessionId && item.teacherId === viewerId);
   const panelRef = useRef<HTMLDivElement>(null);
   const expiresRef = useRef(0);
+  const refreshingRef = useRef(false);
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
   const [token, setToken] = useState<{ value: string; expiresAt: number; payload: string }>();
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (session?.status !== "ACTIVE") return;
     let cancelled = false;
     async function refresh() {
-      const result = await getQrTokenAction(sessionId);
-      if (!cancelled && result.ok) {
-        expiresRef.current = result.expiresAt;
-        setToken({ value: result.token, expiresAt: result.expiresAt, payload: result.payload });
+      if (refreshingRef.current) return;
+      refreshingRef.current = true;
+      try {
+        const result = await getQrTokenAction(sessionId);
+        if (!cancelled && result.ok) {
+          setError("");
+          expiresRef.current = result.expiresAt;
+          setToken({ value: result.token, expiresAt: result.expiresAt, payload: result.payload });
+        } else if (!cancelled) {
+          expiresRef.current = Number.POSITIVE_INFINITY;
+          setToken(undefined);
+          setError(result.message ?? "Le QR est indisponible pour cette session.");
+        }
+      } catch {
+        if (!cancelled) {
+          expiresRef.current = Number.POSITIVE_INFINITY;
+          setToken(undefined);
+          setError("Neon est momentanément indisponible. Le dernier code a été retiré par sécurité.");
+        }
+      } finally {
+        refreshingRef.current = false;
       }
     }
     void refresh();
@@ -35,7 +55,7 @@ export function QrPanel({ sessionId }: { sessionId: string }) {
       if (current >= expiresRef.current) void refresh();
     }, 1_000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [session?.status, sessionId]);
+  }, [refreshKey, session?.status, sessionId]);
 
   if (!session) return <p className="py-16 text-center text-sm text-muted-foreground">Session introuvable.</p>;
   if (session.status !== "ACTIVE") {
@@ -49,6 +69,7 @@ export function QrPanel({ sessionId }: { sessionId: string }) {
       </div>
     );
   }
+  if (error) return <div className="mx-auto max-w-xl border border-amber-200 bg-amber-50 p-8 text-center"><QrCode className="mx-auto size-7 text-amber-700" /><h2 className="mt-4 font-semibold">Pointage indisponible</h2><p className="mt-2 text-sm text-amber-900/75">{error}</p><div className="mt-5 flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={() => setRefreshKey((value) => value + 1)}>Réessayer</Button><Button asChild><Link href={`/teacher/sessions/${sessionId}`}>Clôturer ou consulter</Link></Button></div></div>;
   if (!token) return <p className="py-16 text-center text-sm text-muted-foreground">Génération sécurisée du QR…</p>;
 
   const seconds = Math.max(0, Math.ceil((token.expiresAt - now) / 1_000));

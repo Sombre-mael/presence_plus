@@ -141,6 +141,23 @@ async function main() {
     });
   }
 
+  for (const session of sessions.filter((item) =>
+    item.status === SessionStatus.ACTIVE || item.status === SessionStatus.COMPLETED,
+  )) {
+    const enrolledStudents = users.filter((user) =>
+      user.role === Role.STUDENT &&
+      user.status === UserStatus.ACTIVE &&
+      user.promotionId === session.promotionId,
+    );
+    for (const student of enrolledStudents) {
+      await prisma.sessionEnrollment.upsert({
+        where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+        update: {},
+        create: { sessionId: session.id, studentId: student.id },
+      });
+    }
+  }
+
   const sessionById = new Map(sessions.map((session) => [session.id, session]));
   const attendanceRows = [
     { id: "a2", sessionId: "session-001", studentId: "u5", status: AttendanceStatus.PRESENT, source: AttendanceSource.QR, minutes: 8, note: null },

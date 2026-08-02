@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { freshAdminData } from "../src/lib/admin-seed";
+import { addAcademicDays, currentAcademicDate } from "../src/lib/academic-calendar";
 import {
   createQrToken,
   deriveAttendanceStatus,
@@ -64,6 +65,33 @@ describe("règles métier enseignant", () => {
     expect(roster.some((item) => !item.attendance)).toBe(true);
   });
 
+  it("conserve l’effectif figé après un changement de promotion", () => {
+    const state = freshAdminData();
+    const session = state.sessions.find((item) => item.id === "session-002")!;
+    session.status = "ACTIVE";
+    session.enrolledStudentIds = ["u4"];
+    const student = state.users.find((item) => item.id === "u4")!;
+    student.promotionId = "p1";
+    student.status = "INACTIVE";
+
+    expect(getSessionRoster(state, session.id).map((item) => item.student.id)).toEqual(["u4"]);
+  });
+
+  it("refuse aussi de déplacer une session planifiée vers le passé", () => {
+    const state = freshAdminData();
+    const result = validateTeacherSession(state, {
+      courseId: "c1",
+      date: addAcademicDays(currentAcademicDate(), -1),
+      startTime: "08:00",
+      endTime: "10:00",
+      room: "C20",
+      lateThresholdMinutes: 10,
+    }, "u2", "session-002");
+
+    expect(result.ok).toBe(false);
+    expect(result.fieldErrors?.endTime).toBeDefined();
+  });
+
   it("exige une justification et un motif de correction après clôture", () => {
     const state = freshAdminData();
     const missingExcuse = validateAttendanceInput(state, "session-003", {
@@ -77,9 +105,17 @@ describe("règles métier enseignant", () => {
       source: "MANUAL",
       note: "Justificatif reçu",
     }, true);
+    state.attendances = state.attendances.filter((item) => item.sessionId !== "session-003" || item.studentId !== "u10");
+    const missingRecordCorrection = validateAttendanceInput(state, "session-003", {
+      studentId: "u10",
+      status: "PRESENT",
+      checkedInAt: "14:02",
+      source: "MANUAL",
+    }, false);
 
     expect(missingExcuse.fieldErrors?.note).toBeDefined();
     expect(missingCorrectionReason.fieldErrors?.correctionReason).toBeDefined();
+    expect(missingRecordCorrection.fieldErrors?.correctionReason).toBeDefined();
   });
 
   it("renouvelle le token QR par fenêtre de trente secondes", () => {

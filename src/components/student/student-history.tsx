@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   Clock3,
@@ -42,7 +42,7 @@ export function StudentHistory() {
     const normalized = query.trim().toLocaleLowerCase("fr");
     return history.filter(({ session, attendance }) =>
       (!normalized || `${session.courseCode} ${session.courseName} ${session.teacher}`.toLocaleLowerCase("fr").includes(normalized)) &&
-      (status === "ALL" || attendance?.status === status) &&
+      (status === "ALL" || (status === "MISSING" ? !attendance : attendance?.status === status)) &&
       (courseId === "ALL" || session.courseId === courseId));
   }, [courseId, history, query, status]);
 
@@ -51,24 +51,24 @@ export function StudentHistory() {
       <PageHeader title="Mon historique" description="Comprenez chaque pointage et suivez vos éventuelles demandes de correction." />
 
       <section className="mb-6 grid gap-px overflow-hidden border bg-border sm:grid-cols-3">
-        {[["Présence", `${stats.attendanceRate}%`, "retards inclus"], ["Ponctualité", `${stats.punctualityRate}%`, "sur les séances suivies"], ["Justifiées", stats.excusedCount, "exclues du taux"]].map(([label, value, detail]) => <div key={String(label)} className="bg-background p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="metric-number mt-2 text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>)}
+        {[["Présence", stats.eligibleCount ? `${stats.attendanceRate}%` : "—", "retards inclus"], ["Ponctualité", stats.attendedCount ? `${stats.punctualityRate}%` : "—", "sur les présences"], ["Justifiées", stats.excusedCount, "exclues du taux"]].map(([label, value, detail]) => <div key={String(label)} className="bg-background p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="metric-number mt-2 text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>)}
       </section>
 
       <div className="border bg-background">
         <div className="grid gap-3 border-b p-4 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_190px_190px]">
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cours ou enseignant..." className="pl-9" /></div>
-          <Select value={status} onValueChange={setStatus}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Tous les statuts</SelectItem><SelectItem value="PRESENT">Présent</SelectItem><SelectItem value="LATE">En retard</SelectItem><SelectItem value="ABSENT">Absent</SelectItem><SelectItem value="EXCUSED">Justifiée</SelectItem></SelectContent></Select>
+          <Select value={status} onValueChange={setStatus}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Tous les statuts</SelectItem><SelectItem value="PRESENT">Présent</SelectItem><SelectItem value="LATE">En retard</SelectItem><SelectItem value="ABSENT">Absent</SelectItem><SelectItem value="EXCUSED">Justifiée</SelectItem><SelectItem value="MISSING">À vérifier</SelectItem></SelectContent></Select>
           <Select value={courseId} onValueChange={setCourseId}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Tous les cours</SelectItem>{courses.map((course) => <SelectItem key={course.id} value={course.id}>{course.code}</SelectItem>)}</SelectContent></Select>
         </div>
 
         <div className="divide-y">
-          {filtered.map(({ session, attendance, request }) => (
+          {filtered.map(({ session, attendance, request, requests }) => (
             <Sheet key={session.id}>
               <SheetTrigger asChild>
                 <button className="grid w-full gap-3 p-4 text-left transition-colors hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_150px_130px] sm:items-center">
                   <div className="min-w-0"><p className="truncate text-sm font-medium">{session.courseName}</p><p className="mt-1 text-xs text-muted-foreground">{session.courseCode} · {session.teacher}</p></div>
                   <div><p className="metric-number text-sm">{session.date}</p><p className="mt-1 text-xs text-muted-foreground">{attendance?.checkedInAt ?? "Non pointé"}</p></div>
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end"><StatusBadge status={attendance?.status ?? "ABSENT"} />{request?.status === "PENDING" && <StatusBadge status="PENDING_REQUEST" />}</div>
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">{attendance ? <StatusBadge status={attendance.status} /> : <MissingStatus />}{request?.status === "PENDING" && <StatusBadge status="PENDING_REQUEST" />}</div>
                 </button>
               </SheetTrigger>
               <SheetContent className="overflow-y-auto sm:max-w-md">
@@ -79,9 +79,9 @@ export function StudentHistory() {
                     <Info icon={UserRound} label="Enseignant" value={session.teacher} />
                     <Info icon={Clock3} label="Pointage" value={attendance?.checkedInAt ? `${attendance.checkedInAt} · ${sourceLabel(attendance.source)}` : "Aucun pointage"} />
                   </div>
-                  <div><p className="mb-2 text-xs text-muted-foreground">Résultat</p><StatusBadge status={attendance?.status ?? "ABSENT"} />{attendance?.note && <p className="mt-3 border-l-2 pl-3 text-sm leading-6 text-muted-foreground">{attendance.note}</p>}{attendance?.correctionReason && <p className="mt-3 text-xs leading-5 text-muted-foreground">Dernière correction: {attendance.correctionReason}</p>}</div>
+                  <div><p className="mb-2 text-xs text-muted-foreground">Résultat</p>{attendance ? <StatusBadge status={attendance.status} /> : <MissingStatus />}{!attendance && <p className="mt-3 text-xs leading-5 text-sky-800">Aucun enregistrement Neon n’est associé à cette séance. Ce résultat n’est pas compté dans vos indicateurs.</p>}{attendance?.note && <p className="mt-3 border-l-2 pl-3 text-sm leading-6 text-muted-foreground">{attendance.note}</p>}{attendance?.correctionReason && <p className="mt-3 text-xs leading-5 text-muted-foreground">Dernière correction: {attendance.correctionReason}</p>}</div>
 
-                  {request && <RequestStatus request={request} />}
+                  {requests.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Historique des demandes</p>{requests.map((item) => <RequestStatus key={item.id} request={item} />)}</div>}
                   {request?.status === "PENDING" ? <PendingRequest requestId={request.id} /> : <CorrectionDialog sessionId={session.id} attendanceStatus={attendance?.status} />}
                 </div>
               </SheetContent>
@@ -102,14 +102,23 @@ function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; 
   const [requestedStatus, setRequestedStatus] = useState<"PRESENT" | "LATE" | "EXCUSED">(availableStatuses[0]);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
 
   async function submit() {
+    if (reason.trim().length < 10) {
+      setError("Expliquez votre demande en au moins 10 caractères.");
+      reasonRef.current?.focus();
+      return;
+    }
     const result = await createCorrectionRequest({ sessionId, studentId, requestedStatus, reason });
     if (result.ok) {
       setOpen(false);
       setReason("");
       setError("");
-    } else setError(result.message);
+    } else {
+      setError(result.fieldErrors?.reason ?? result.message);
+      reasonRef.current?.focus();
+    }
   }
 
   return (
@@ -119,7 +128,7 @@ function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; 
         <DialogHeader><DialogTitle>Demande de correction</DialogTitle><DialogDescription>Indiquez le statut attendu et expliquez précisément la situation.</DialogDescription></DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2"><Label>Statut souhaité</Label><Select value={requestedStatus} onValueChange={(value) => setRequestedStatus(value as typeof requestedStatus)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{availableStatuses.map((value) => <SelectItem key={value} value={value}>{value === "PRESENT" ? "Présent" : value === "LATE" ? "En retard" : "Absence justifiée"}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Motif</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Décrivez ce qui doit être vérifié…" /></div>
+          <div className="space-y-2"><Label htmlFor={`correction-reason-${sessionId}`}>Motif</Label><Textarea ref={reasonRef} id={`correction-reason-${sessionId}`} value={reason} onChange={(event) => { setReason(event.target.value); setError(""); }} placeholder="Décrivez ce qui doit être vérifié…" aria-invalid={Boolean(error)} /><p className="text-xs text-muted-foreground">10 caractères minimum</p></div>
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
         <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button onClick={submit} disabled={isPending(`correction:${sessionId}:create`)}><Send /> Envoyer</Button></DialogFooter>
@@ -129,13 +138,28 @@ function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; 
 }
 
 function PendingRequest({ requestId }: { requestId: string }) {
-  const { viewerId: studentId, cancelCorrectionRequest, isPending } = useAcademicData();
-  return <Button variant="ghost" className="w-full text-destructive" disabled={isPending(`correction:${requestId}:cancel`)} onClick={() => cancelCorrectionRequest(requestId, studentId)}><XCircle /> Annuler la demande</Button>;
+  const { cancelCorrectionRequest, isPending } = useAcademicData();
+  return <Button variant="ghost" className="w-full text-destructive" disabled={isPending(`correction:${requestId}:cancel`)} onClick={() => cancelCorrectionRequest(requestId)}><XCircle /> Annuler la demande</Button>;
 }
 
 function RequestStatus({ request }: { request: ReturnType<typeof getStudentHistory>[number]["request"] }) {
   if (!request) return null;
-  return <div className="border bg-muted/30 p-4"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium">Demande de correction</p><StatusBadge status={request.status === "PENDING" ? "PENDING_REQUEST" : request.status} /></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{request.reason}</p>{request.decisionReason && <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">Décision: {request.decisionReason}</p>}</div>;
+  return <div className="border bg-muted/30 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium">Statut demandé : {statusLabel(request.requestedStatus)}</p><p className="mt-1 text-xs text-muted-foreground">Envoyée le {formatRequestDate(request.createdAt)}</p></div><StatusBadge status={request.status === "PENDING" ? "PENDING_REQUEST" : request.status} /></div><p className="mt-3 text-sm leading-6 text-muted-foreground">{request.reason}</p>{request.decisionReason && <div className="mt-3 border-t pt-3"><p className="text-xs font-medium">Décision{request.resolvedByName ? ` de ${request.resolvedByName}` : ""}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{request.decisionReason}</p>{request.resolvedAt && <p className="mt-1 text-[11px] text-muted-foreground">Traitée le {formatRequestDate(request.resolvedAt)}</p>}</div>}</div>;
+}
+
+function MissingStatus() {
+  return <span className="inline-flex items-center border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800">À vérifier</span>;
+}
+
+function statusLabel(status: AttendanceStatus) {
+  if (status === "PRESENT") return "Présent";
+  if (status === "LATE") return "En retard";
+  if (status === "EXCUSED") return "Absence justifiée";
+  return "Absent";
+}
+
+function formatRequestDate(value: string) {
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 function Info({ icon: Icon, label, value }: { icon: typeof CalendarClock; label: string; value: string }) {

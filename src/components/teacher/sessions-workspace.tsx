@@ -101,10 +101,10 @@ export function SessionsWorkspace() {
             </div>
             <div className="grid grid-cols-7">
               {days.map((day, index) => {
-                const daySessions = day ? sessions.filter((session) => session.date === day) : [];
+                const daySessions = day ? sessions.filter((session) => session.date === day).sort((a, b) => a.startTime.localeCompare(b.startTime)) : [];
                 return (
                   <div key={`${day ?? "empty"}-${index}`} className="min-h-24 border-b border-r p-1.5 sm:min-h-28 sm:p-2">
-                    {day && <><span className="metric-number text-xs text-muted-foreground">{Number(day.slice(-2))}</span><div className="mt-1 space-y-1">{daySessions.map((session) => <Link key={session.id} href={`/teacher/sessions/${session.id}`} className="block truncate bg-primary/8 px-1.5 py-1 text-[10px] font-medium text-primary sm:text-xs">{session.startTime} {session.courseCode}</Link>)}</div></>}
+                    {day && <><span className="metric-number text-xs text-muted-foreground">{Number(day.slice(-2))}</span><div className="mt-1 space-y-1">{daySessions.map((session) => <Link key={session.id} href={`/teacher/sessions/${session.id}`} className={`block truncate px-1.5 py-1 text-[10px] font-medium sm:text-xs ${session.status === "ACTIVE" ? "bg-emerald-100 text-emerald-800" : session.status === "COMPLETED" ? "bg-sky-50 text-sky-800" : session.status === "CANCELLED" ? "bg-red-50 text-red-700 line-through" : "bg-primary/8 text-primary"}`}>{session.startTime} {session.courseCode}</Link>)}</div></>}
                   </div>
                 );
               })}

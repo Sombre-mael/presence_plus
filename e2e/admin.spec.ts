@@ -46,11 +46,10 @@ test("un utilisateur peut être créé, persisté et supprimé", async ({ page }
 test("une suppression dépendante est bloquée avec une explication", async ({ page }) => {
   await page.goto("/admin/users");
   await page.getByRole("button", { name: /Aline Kabeya aline@presence\.plus/ }).click();
-  await page.getByRole("button", { name: "Supprimer" }).click();
-  await page.getByRole("button", { name: "Supprimer définitivement" }).click();
 
-  await expect(page.getByText("Suppression impossible")).toBeVisible();
+  await expect(page.getByText("Suppression indisponible")).toBeVisible();
   await expect(page.getByText(/compte administrateur actuellement utilisé/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Supprimer" })).toBeDisabled();
 });
 
 test("la supervision et l’export statistique sont accessibles", async ({ page }) => {

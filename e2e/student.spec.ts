@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cleanupCorrectionFixture, cleanupSessionFixture, createActiveSessionFixture, latestPendingCorrectionFixture, selectDemoProfile } from "./helpers";
+import { cleanupCorrectionFixture, cleanupPendingCorrectionFixtures, cleanupSessionFixture, createActiveSessionFixture, latestPendingCorrectionFixture, selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -70,10 +70,11 @@ test("le planning et l’historique restent lisibles sur mobile", async ({ page 
 });
 
 test("une demande étudiante peut être acceptée par l’enseignant", async ({ page }) => {
+  await cleanupPendingCorrectionFixtures();
   await page.goto("/student/history");
   await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
   await page.getByRole("button", { name: "Demander une correction" }).click();
-  await page.getByPlaceholder("Décrivez ce qui doit être vérifié…").fill("J’étais présent dès le début de cette séance.");
+  await page.getByPlaceholder("Décrivez ce qui doit être vérifié…").fill("[E2E] J’étais présent dès le début de cette séance.");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(page.getByText("Demande de correction").last()).toBeVisible();
   const fixture = await latestPendingCorrectionFixture();

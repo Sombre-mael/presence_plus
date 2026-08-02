@@ -7,7 +7,7 @@ import type {
   MutationResult,
   TeacherSessionInput,
 } from "@/types/admin";
-import { academicMonth, currentAcademicDate } from "./academic-calendar";
+import { academicDateTimeKey, academicMonth, currentAcademicDate, currentAcademicDateTimeKey } from "./academic-calendar";
 
 const sessionSchema = z.object({
   name: z.string().trim().max(120, "Maximum 120 caractères.").optional(),
@@ -89,8 +89,12 @@ export function validateTeacherSession(
     return { ok: false, message: reason, fieldErrors: { startTime: reason } };
   }
 
-  if (!editingId && input.date < currentAcademicDate()) {
-    return { ok: false, message: "Une nouvelle session ne peut pas être planifiée dans le passé.", fieldErrors: { date: "Choisissez aujourd'hui ou une date future." } };
+  if (academicDateTimeKey(input.date, input.endTime) <= currentAcademicDateTimeKey()) {
+    return {
+      ok: false,
+      message: "Une session ne peut pas se terminer dans le passé.",
+      fieldErrors: { date: "Choisissez un créneau encore à venir.", endTime: "Cette heure de fin est déjà passée." },
+    };
   }
 
   return {
@@ -106,12 +110,17 @@ export function getSessionRoster(state: AcademicDataState, sessionId: string) {
     session.promotionId ??
     state.courses.find((course) => course.id === session.courseId)?.promotionId;
 
+  const frozenStudentIds = session.enrolledStudentIds
+    ? new Set(session.enrolledStudentIds)
+    : null;
+
   return state.users
     .filter(
       (user) =>
         user.role === "STUDENT" &&
-        user.status === "ACTIVE" &&
-        user.promotionId === promotionId,
+        (frozenStudentIds
+          ? frozenStudentIds.has(user.id)
+          : user.status === "ACTIVE" && user.promotionId === promotionId),
     )
     .map((student) => ({
       student,
@@ -155,7 +164,7 @@ export function validateAttendanceInput(
       fieldErrors: { note: "Ajoutez le motif de l’absence justifiée." },
     };
   }
-  if (session.status === "COMPLETED" && correction && !input.correctionReason?.trim()) {
+  if (session.status === "COMPLETED" && !input.correctionReason?.trim()) {
     return {
       ok: false,
       message: "Le motif de correction est obligatoire.",
@@ -188,21 +197,27 @@ export function getTeacherNotifications(
       teacherId,
   );
   const notifications: AdminAnomaly[] = [];
+  const nowKey = currentAcademicDateTimeKey();
 
   for (const session of teacherSessions) {
     const rate = session.expectedCount
       ? Math.round((session.presentCount / session.expectedCount) * 100)
       : 0;
     if (session.status === "ACTIVE") {
+      const expired = academicDateTimeKey(session.date, session.endTime) <= nowKey;
       notifications.push({
         id: `active-${session.id}`,
-        severity: rate < 80 ? "HIGH" : "MEDIUM",
-        title: "Session en cours",
-        detail: `${session.courseCode} compte ${session.presentCount}/${session.expectedCount} pointages.`,
+        severity: expired || rate < 80 ? "HIGH" : "MEDIUM",
+        title: expired ? "Clôture requise" : "Session en cours",
+        detail: expired ? `${session.courseCode} a dépassé son heure de fin.` : `${session.courseCode} compte ${session.presentCount}/${session.expectedCount} pointages.`,
         href: `/teacher/sessions/${session.id}`,
       });
     }
-    if (session.status === "SCHEDULED" && session.date === currentAcademicDate()) {
+    if (
+      session.status === "SCHEDULED" &&
+      session.date === currentAcademicDate() &&
+      academicDateTimeKey(session.date, session.startTime) > nowKey
+    ) {
       notifications.push({
         id: `scheduled-${session.id}`,
         severity: "LOW",
@@ -223,17 +238,18 @@ export function getTeacherStats(state: AcademicDataState, teacherId: string) {
       teacherId &&
       session.status !== "CANCELLED",
   );
-  const tracked = sessions.filter((session) => session.status !== "SCHEDULED");
+  const tracked = sessions.filter((session) => session.status === "COMPLETED");
   const expected = tracked.reduce((total, session) => total + session.expectedCount, 0);
   const present = tracked.reduce((total, session) => total + session.presentCount, 0);
   const late = state.attendances.filter(
     (record) =>
       record.status === "LATE" &&
-      sessions.some((session) => session.id === record.sessionId),
+      tracked.some((session) => session.id === record.sessionId),
   ).length;
   return {
     sessionsThisMonth: sessions.filter((session) => session.date.startsWith(academicMonth())).length,
     attendanceRate: expected ? Math.round((present / expected) * 100) : 0,
+    trackedCount: tracked.length,
     lateCount: late,
     activeCount: sessions.filter((session) => session.status === "ACTIVE").length,
   };

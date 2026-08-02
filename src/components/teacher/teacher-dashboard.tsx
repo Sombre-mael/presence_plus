@@ -15,6 +15,8 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { getTeacherNotifications, getTeacherStats } from "@/lib/academic-domain";
+import { getTeacherCorrectionNotifications } from "@/lib/student-domain";
+import { academicDateTimeKey, currentAcademicDateTimeKey } from "@/lib/academic-calendar";
 
 export function TeacherDashboard() {
   const { state, viewerId: teacherId } = useAcademicData();
@@ -22,15 +24,23 @@ export function TeacherDashboard() {
   const teacherSessions = state.sessions
     .filter((session) => session.teacherId === teacherId)
     .sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`));
+  const teacher = state.users.find((user) => user.id === teacherId);
+  const nowKey = currentAcademicDateTimeKey();
   const active = teacherSessions.find((session) => session.status === "ACTIVE");
-  const upcoming = teacherSessions.filter((session) => session.status === "SCHEDULED").slice(0, 3);
+  const activeExpired = active ? academicDateTimeKey(active.date, active.endTime) <= nowKey : false;
+  const upcoming = teacherSessions.filter((session) =>
+    session.status === "SCHEDULED" && academicDateTimeKey(session.date, session.startTime) > nowKey,
+  ).slice(0, 3);
   const stats = getTeacherStats(state, teacherId);
-  const attention = getTeacherNotifications(state, teacherId);
+  const attention = [
+    ...getTeacherCorrectionNotifications(state, teacherId),
+    ...getTeacherNotifications(state, teacherId),
+  ];
 
   return (
     <div className="space-y-7">
       <PageHeader
-        title="Bonjour Patrick"
+        title={`Bonjour ${teacher?.name.split(" ")[0] ?? ""}`.trim()}
         description="Pilotez vos séances et suivez les pointages sans perdre le fil du cours."
         action={<Button asChild><Link href="/teacher/sessions/new"><CalendarDays /> Planifier une séance</Link></Button>}
       />
@@ -38,7 +48,7 @@ export function TeacherDashboard() {
       <section className="grid gap-px overflow-hidden border bg-border sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Séances ce mois", value: stats.sessionsThisMonth, detail: "planifiées et réalisées", icon: CalendarDays },
-          { label: "Présence moyenne", value: `${stats.attendanceRate}%`, detail: "sur vos séances suivies", icon: UserCheck },
+          { label: "Présence moyenne", value: stats.trackedCount ? `${stats.attendanceRate}%` : "—", detail: "sur vos séances clôturées", icon: UserCheck },
           { label: "Retards", value: stats.lateCount, detail: "pointages après tolérance", icon: TimerReset },
           { label: "Session active", value: stats.activeCount, detail: active?.courseCode ?? "aucune en cours", icon: QrCode },
         ].map((item, index) => (
@@ -62,11 +72,11 @@ export function TeacherDashboard() {
         <section className="overflow-hidden border bg-background">
           <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="p-5 sm:p-6">
-              <div className="flex flex-wrap items-center gap-2"><StatusBadge status="ACTIVE" /><span className="text-xs text-muted-foreground">Pointage ouvert</span></div>
+              <div className="flex flex-wrap items-center gap-2"><StatusBadge status="ACTIVE" /><span className="text-xs text-muted-foreground">{activeExpired ? "Horaire dépassé" : "Pointage ouvert"}</span></div>
               <h2 className="mt-4 text-xl font-semibold">{active.courseName}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{active.courseCode} · {active.promotion} · Salle {active.room}</p>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Button asChild><Link href={`/teacher/sessions/${active.id}/qr`}><QrCode /> Afficher le QR</Link></Button>
+                {activeExpired ? <Button asChild><Link href={`/teacher/sessions/${active.id}`}><ClockAlert /> Clôturer la session</Link></Button> : <Button asChild><Link href={`/teacher/sessions/${active.id}/qr`}><QrCode /> Afficher le QR</Link></Button>}
                 <Button asChild variant="outline"><Link href={`/teacher/sessions/${active.id}/attendances`}><UserCheck /> Voir les présences</Link></Button>
               </div>
             </div>

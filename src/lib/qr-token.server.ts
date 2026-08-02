@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const WINDOW_MS = 30_000;
 const PREVIEW_MS = 60_000;
+type CheckInSource = "QR" | "STUDENT_CODE";
 
 function secret() {
   const value = process.env.AUTH_SECRET;
@@ -36,15 +37,28 @@ export function matchesServerQrToken(sessionId: string, token: string, now = Dat
   );
 }
 
-export function createPreviewReceipt(sessionId: string, studentId: string, token: string, now = Date.now()) {
+export function createPreviewReceipt(
+  sessionId: string,
+  studentId: string,
+  token: string,
+  source: CheckInSource,
+  now = Date.now(),
+) {
   const expiresAt = now + PREVIEW_MS;
-  const signature = sign(`preview:${sessionId}:${studentId}:${token}:${expiresAt}`);
+  const signature = sign(`preview:${sessionId}:${studentId}:${token}:${source}:${expiresAt}`);
   return { expiresAt, receipt: `${expiresAt}.${signature}` };
 }
 
-export function verifyPreviewReceipt(sessionId: string, studentId: string, token: string, receipt: string, now = Date.now()) {
+export function verifyPreviewReceipt(
+  sessionId: string,
+  studentId: string,
+  token: string,
+  source: CheckInSource,
+  receipt: string,
+  now = Date.now(),
+) {
   const [expiresAtRaw, signature] = receipt.split(".");
   const expiresAt = Number(expiresAtRaw);
   if (!signature || !Number.isFinite(expiresAt) || expiresAt < now) return false;
-  return secureEqual(sign(`preview:${sessionId}:${studentId}:${token}:${expiresAt}`), signature);
+  return secureEqual(sign(`preview:${sessionId}:${studentId}:${token}:${source}:${expiresAt}`), signature);
 }

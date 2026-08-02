@@ -26,6 +26,7 @@ model User {
   correctionRequests   AttendanceCorrectionRequest[] @relation("StudentCorrections")
   handledCorrections   AttendanceCorrectionRequest[] @relation("TeacherCorrections")
   resolvedCorrections  AttendanceCorrectionRequest[] @relation("CorrectionResolver")
+  sessionEnrollments   SessionEnrollment[]
   promotion            Promotion?                    @relation(fields: [promotionId], references: [id])
 
   @@index([role])
@@ -86,11 +87,25 @@ model Session {
   correctionRequests   AttendanceCorrectionRequest[]
   courses              Course                        @relation(fields: [courseId], references: [id])
   teacher              User                          @relation("TeacherSessions", fields: [teacherId], references: [id])
+  enrollments          SessionEnrollment[]
 
   @@index([teacherId])
   @@index([promotionId])
   @@index([status])
   @@index([scheduledStartAt])
+}
+
+model SessionEnrollment {
+  id        String   @id @default(cuid())
+  sessionId String
+  studentId String
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student   User     @relation(fields: [studentId], references: [id])
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+  @@index([sessionId])
 }
 
 model Attendance {

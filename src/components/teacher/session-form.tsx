@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CalendarCheck, Clock3, MapPin } from "lucide-react";
 import type { TeacherSessionInput } from "@/types/admin";
@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
   const { state, viewerId: teacherId, createSession, updateSession, isPending } = useAcademicData();
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   const existing = state.sessions.find((session) => session.id === sessionId);
   const saving = isPending(sessionId ? `session:${sessionId}:update` : "session:create");
   const courses = state.courses.filter((course) => course.teacherId === teacherId && course.active !== false);
@@ -44,11 +45,12 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
     event.preventDefault();
     const normalizedInput = { ...input, courseId: selectedCourseId };
     const result = await (sessionId
-      ? updateSession(sessionId, normalizedInput, teacherId)
-      : createSession(normalizedInput, teacherId));
+      ? updateSession(sessionId, normalizedInput)
+      : createSession(normalizedInput));
     if (!result.ok) {
       setMessage(result.message);
       setErrors(result.fieldErrors ?? {});
+      window.requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus());
       return;
     }
     const destination = sessionId ?? ("id" in result ? result.id : undefined);
@@ -59,20 +61,24 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
     return <Alert variant="destructive"><AlertTitle>Modification indisponible</AlertTitle><AlertDescription>Cette session a déjà démarré, a été clôturée ou annulée.</AlertDescription></Alert>;
   }
 
+  if (!sessionId && !courses.length) {
+    return <Alert><AlertTitle>Aucun cours disponible</AlertTitle><AlertDescription>Aucun cours actif ne vous est affecté. Un administrateur doit activer et vous attribuer un cours avant de planifier une séance.</AlertDescription></Alert>;
+  }
+
   return (
-    <form onSubmit={submit} className="grid gap-6 xl:grid-cols-[minmax(0,720px)_320px]">
+    <form ref={formRef} onSubmit={submit} className="grid gap-6 xl:grid-cols-[minmax(0,720px)_320px]">
       <div className="border bg-background">
         <div className="border-b p-5"><h2 className="font-semibold">Informations de la séance</h2><p className="mt-1 text-xs text-muted-foreground">Le cours détermine automatiquement la promotion concernée.</p></div>
         <div className="grid gap-5 p-5 sm:grid-cols-2">
           <Field label="Titre de la séance" error={errors.name} className="sm:col-span-2">
-            <Input aria-label="Titre de la séance" value={input.name ?? ""} onChange={(event) => update("name", event.target.value)} placeholder={course ? `${course.name} - séance` : "Ex. Révision du chapitre 3"} />
+            <Input aria-label="Titre de la séance" aria-invalid={Boolean(errors.name)} value={input.name ?? ""} onChange={(event) => update("name", event.target.value)} placeholder={course ? `${course.name} - séance` : "Ex. Révision du chapitre 3"} />
           </Field>
           <Field label="Description" error={errors.description} className="sm:col-span-2">
-            <Textarea aria-label="Description" value={input.description ?? ""} onChange={(event) => update("description", event.target.value)} placeholder="Objectif ou consignes utiles (facultatif)" />
+            <Textarea aria-label="Description" aria-invalid={Boolean(errors.description)} value={input.description ?? ""} onChange={(event) => update("description", event.target.value)} placeholder="Objectif ou consignes utiles (facultatif)" />
           </Field>
           <Field label="Cours" error={errors.courseId} className="sm:col-span-2">
             <Select value={selectedCourseId} onValueChange={(value) => update("courseId", value)}>
-              <SelectTrigger className="w-full" aria-label="Cours"><SelectValue placeholder="Sélectionner un cours" /></SelectTrigger>
+              <SelectTrigger className="w-full" aria-label="Cours" aria-invalid={Boolean(errors.courseId)}><SelectValue placeholder="Sélectionner un cours" /></SelectTrigger>
               <SelectContent>{courses.map((item) => <SelectItem key={item.id} value={item.id}>{item.code} · {item.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
@@ -80,19 +86,19 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
             <Input value={promotion?.name ?? "Aucune promotion liée"} disabled />
           </Field>
           <Field label="Date" error={errors.date}>
-            <Input aria-label="Date" type="date" value={input.date} onChange={(event) => update("date", event.target.value)} />
+            <Input aria-label="Date" aria-invalid={Boolean(errors.date)} type="date" min={currentAcademicDate()} value={input.date} onChange={(event) => update("date", event.target.value)} />
           </Field>
           <Field label="Salle" error={errors.room}>
-            <Input aria-label="Salle" value={input.room} onChange={(event) => update("room", event.target.value)} placeholder="Ex. B12" />
+            <Input aria-label="Salle" aria-invalid={Boolean(errors.room)} value={input.room} onChange={(event) => update("room", event.target.value)} placeholder="Ex. B12" />
           </Field>
           <Field label="Heure de début" error={errors.startTime}>
-            <Input aria-label="Heure de début" type="time" value={input.startTime} onChange={(event) => update("startTime", event.target.value)} />
+            <Input aria-label="Heure de début" aria-invalid={Boolean(errors.startTime)} type="time" value={input.startTime} onChange={(event) => update("startTime", event.target.value)} />
           </Field>
           <Field label="Heure de fin" error={errors.endTime}>
-            <Input aria-label="Heure de fin" type="time" value={input.endTime} onChange={(event) => update("endTime", event.target.value)} />
+            <Input aria-label="Heure de fin" aria-invalid={Boolean(errors.endTime)} type="time" value={input.endTime} onChange={(event) => update("endTime", event.target.value)} />
           </Field>
           <Field label="Tolérance de retard (minutes)" error={errors.lateThresholdMinutes} className="sm:col-span-2">
-            <Input aria-label="Tolérance de retard" type="number" min={0} max={60} value={input.lateThresholdMinutes} onChange={(event) => update("lateThresholdMinutes", Number(event.target.value))} />
+            <Input aria-label="Tolérance de retard" aria-invalid={Boolean(errors.lateThresholdMinutes)} type="number" min={0} max={60} value={input.lateThresholdMinutes} onChange={(event) => update("lateThresholdMinutes", Number(event.target.value))} />
           </Field>
           {message && <Alert variant="destructive" className="sm:col-span-2"><AlertTitle>Impossible d’enregistrer</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>}
         </div>

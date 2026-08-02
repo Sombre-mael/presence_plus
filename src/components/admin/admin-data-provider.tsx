@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { CheckCircle2, RotateCcw, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudOff, RotateCcw, X } from "lucide-react";
 import {
   cancelCorrectionRequestAction,
   cancelSessionAction,
@@ -17,6 +17,7 @@ import {
   deletePromotionAction,
   deleteUserAction,
   loadAcademicDataAction,
+  loadLiveAcademicDataAction,
   resolveCorrectionRequestAction,
   saveAttendanceAction,
   setCourseActiveAction,
@@ -47,6 +48,7 @@ import type {
 } from "@/types/student";
 import type { AttendanceSource } from "@/types";
 import { Button } from "@/components/ui/button";
+import { canApplySyncResponse } from "@/lib/sync-domain";
 
 const OBSOLETE_STORAGE_KEYS = [
   "presence-plus:academic-data:v3",
@@ -75,19 +77,21 @@ export interface AcademicDataContextValue {
   updateCourse: (id: string, input: AdminCourseInput) => AsyncResult;
   deleteCourse: (id: string) => AsyncResult;
   setCourseActive: (id: string, active: boolean) => AsyncResult;
-  createSession: (input: TeacherSessionInput, teacherId: string) => Promise<MutationResult & { id?: string }>;
-  updateSession: (id: string, input: TeacherSessionInput, teacherId: string) => AsyncResult;
-  startSession: (id: string, teacherId: string) => AsyncResult;
+  createSession: (input: TeacherSessionInput) => Promise<MutationResult & { id?: string }>;
+  updateSession: (id: string, input: TeacherSessionInput) => AsyncResult;
+  startSession: (id: string) => AsyncResult;
   cancelSession: (id: string, reason?: string) => AsyncResult;
-  completeSession: (id: string, teacherId: string) => AsyncResult;
-  saveAttendance: (sessionId: string, input: AttendanceInput, teacherId: string) => AsyncResult;
+  completeSession: (id: string) => AsyncResult;
+  saveAttendance: (sessionId: string, input: AttendanceInput) => AsyncResult;
   validateStudentCode: (raw: string, source: Extract<AttendanceSource, "QR" | "STUDENT_CODE">) => Promise<CheckInValidationResult>;
   submitStudentCheckIn: (input: StudentCheckInInput) => Promise<CheckInValidationResult>;
   createCorrectionRequest: (input: CorrectionRequestInput) => AsyncResult;
-  cancelCorrectionRequest: (id: string, studentId: string) => AsyncResult;
+  cancelCorrectionRequest: (id: string) => AsyncResult;
   resolveCorrectionRequest: (input: CorrectionResolutionInput) => AsyncResult;
   resetData: () => Promise<void>;
   notify: (message: string) => void;
+  syncStatus: "synced" | "syncing" | "error";
+  lastSyncedAt?: string;
 }
 
 const AcademicDataContext = createContext<AcademicDataContextValue | null>(null);
@@ -97,25 +101,54 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
   const [hydrated, setHydrated] = useState(Boolean(initialState));
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingKeys, setPendingKeys] = useState<string[]>([]);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "error">(initialState ? "synced" : "syncing");
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | undefined>(initialState ? new Date().toISOString() : undefined);
+  const reloadSequence = useRef(0);
+  const mutationRevision = useRef(0);
   const reduceMotion = useReducedMotion();
 
-  const notify = useCallback((message: string) => setToast(message), []);
+  const notify = useCallback((message: string) => setToast({ message, type: "success" }), []);
+  const notifyError = useCallback((message: string) => setToast({ message, type: "error" }), []);
 
   const reload = useCallback(async (announce = false) => {
+    const sequence = ++reloadSequence.current;
+    const revision = mutationRevision.current;
     setPendingCount((count) => count + 1);
+    setSyncStatus("syncing");
     try {
-      const data = await loadAcademicDataAction();
-      setState(data);
+      const result = await loadAcademicDataAction();
+      if (!result.viewerId || !result.role || !result.state) {
+        window.location.replace("/login");
+        return;
+      }
+      if (result.viewerId !== viewerId) {
+        const homes = { ADMIN: "/admin/dashboard", TEACHER: "/teacher/dashboard", STUDENT: "/student/dashboard" } as const;
+        window.location.replace(homes[result.role]);
+        return;
+      }
+      if (!canApplySyncResponse({
+        requestSequence: sequence,
+        latestSequence: reloadSequence.current,
+        revisionAtStart: revision,
+        currentRevision: mutationRevision.current,
+        responseViewerId: result.viewerId,
+        currentViewerId: viewerId,
+      })) return;
+      setState(result.state);
       setHydrated(true);
+      setSyncStatus("synced");
+      setLastSyncedAt(result.syncedAt);
       if (announce) notify("Données rechargées depuis Neon.");
     } catch {
+      if (sequence !== reloadSequence.current) return;
       setHydrated(true);
-      notify("Neon est momentanément indisponible. Réessayez dans un instant.");
+      setSyncStatus("error");
+      notifyError("Neon est momentanément indisponible. Réessayez dans un instant.");
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
     }
-  }, [notify]);
+  }, [notify, notifyError, viewerId]);
 
   useEffect(() => {
     OBSOLETE_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
@@ -131,9 +164,46 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
   }, [reload]);
 
+  const hasActiveSession = state.sessions.some((session) => session.status === "ACTIVE");
+  useEffect(() => {
+    if (!hasActiveSession) return;
+    const interval = window.setInterval(async () => {
+      if (document.visibilityState !== "visible" || pendingKeys.length > 0) return;
+      const sequence = ++reloadSequence.current;
+      const revision = mutationRevision.current;
+      try {
+        const result = await loadLiveAcademicDataAction();
+        if (!result.viewerId || !result.role || !result.patch) {
+          window.location.replace("/login");
+          return;
+        }
+        if (result.viewerId !== viewerId) {
+          const homes = { ADMIN: "/admin/dashboard", TEACHER: "/teacher/dashboard", STUDENT: "/student/dashboard" } as const;
+          window.location.replace(homes[result.role]);
+          return;
+        }
+        if (!canApplySyncResponse({
+          requestSequence: sequence,
+          latestSequence: reloadSequence.current,
+          revisionAtStart: revision,
+          currentRevision: mutationRevision.current,
+          responseViewerId: result.viewerId,
+          currentViewerId: viewerId,
+        })) return;
+        setState((current) => ({ ...current, ...result.patch }));
+        setSyncStatus("synced");
+        setLastSyncedAt(result.syncedAt);
+      } catch {
+        if (sequence === reloadSequence.current) setSyncStatus("error");
+      }
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [hasActiveSession, pendingKeys.length, viewerId]);
+
   useEffect(() => {
     if (!toast) return;
-    const timeout = window.setTimeout(() => setToast(""), 3200);
+    if (toast.type === "error") return;
+    const timeout = window.setTimeout(() => setToast(null), 4200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
@@ -142,27 +212,36 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     setPendingKeys((current) => [...current, key]);
     try {
       const result = await request;
+      if (result.ok) mutationRevision.current += 1;
       if (result.ok && result.patch) setState((current) => ({ ...current, ...result.patch }));
+      if (result.ok) {
+        setSyncStatus("synced");
+        setLastSyncedAt(new Date().toISOString());
+      }
       if (result.ok) notify(result.message);
+      else notifyError(result.message);
       return result;
     } catch {
-      return { ok: false, message: "La mutation n’a pas pu être confirmée par Neon." } as AcademicActionResult<T>;
+      setSyncStatus("error");
+      const result = { ok: false, message: "La mutation n’a pas pu être confirmée par Neon." } as AcademicActionResult<T>;
+      notifyError(result.message);
+      return result;
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
       setPendingKeys((current) => current.filter((item, index) => item !== key || index !== current.lastIndexOf(key)));
     }
-  }, [notify]);
+  }, [notify, notifyError]);
 
   const createUser = useCallback((input: AdminUserInput) => run(createUserAction(input), "user:create"), [run]);
   const updateUser = useCallback((id: string, input: AdminUserInput) => run(updateUserAction(id, input), `user:${id}:update`), [run]);
   const deleteUser = useCallback((id: string) => run(deleteUserAction(id), `user:${id}:delete`), [run]);
   const setUserStatus = useCallback((id: string, status: "ACTIVE" | "INACTIVE") => run(setUserStatusAction(id, status), `user:${id}:status`), [run]);
-  const createPromotion = useCallback((input: AdminPromotionInput) => run(createPromotionAction(input)), [run]);
-  const updatePromotion = useCallback((id: string, input: AdminPromotionInput) => run(updatePromotionAction(id, input)), [run]);
-  const deletePromotion = useCallback((id: string) => run(deletePromotionAction(id)), [run]);
-  const createCourse = useCallback((input: AdminCourseInput) => run(createCourseAction(input)), [run]);
-  const updateCourse = useCallback((id: string, input: AdminCourseInput) => run(updateCourseAction(id, input)), [run]);
-  const deleteCourse = useCallback((id: string) => run(deleteCourseAction(id)), [run]);
+  const createPromotion = useCallback((input: AdminPromotionInput) => run(createPromotionAction(input), "promotion:create"), [run]);
+  const updatePromotion = useCallback((id: string, input: AdminPromotionInput) => run(updatePromotionAction(id, input), `promotion:${id}:update`), [run]);
+  const deletePromotion = useCallback((id: string) => run(deletePromotionAction(id), `promotion:${id}:delete`), [run]);
+  const createCourse = useCallback((input: AdminCourseInput) => run(createCourseAction(input), "course:create"), [run]);
+  const updateCourse = useCallback((id: string, input: AdminCourseInput) => run(updateCourseAction(id, input), `course:${id}:update`), [run]);
+  const deleteCourse = useCallback((id: string) => run(deleteCourseAction(id), `course:${id}:delete`), [run]);
   const setCourseActive = useCallback((id: string, active: boolean) => run(setCourseActiveAction(id, active), `course:${id}:active`), [run]);
   const createSession = useCallback(async (input: TeacherSessionInput) => {
     const result = await run(createSessionAction(input), "session:create");
@@ -180,7 +259,17 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
   const validateStudentCode = useCallback(async (raw: string, source: Extract<AttendanceSource, "QR" | "STUDENT_CODE">) => {
     setPendingCount((count) => count + 1);
     try {
-      return await validateStudentCodeAction(raw, source);
+      const result = await validateStudentCodeAction(raw, source);
+      if (result.ok) mutationRevision.current += 1;
+      if (result.ok && result.patch) setState((current) => ({ ...current, ...result.patch }));
+      return result;
+    } catch {
+      setSyncStatus("error");
+      return {
+        ok: false,
+        code: "NETWORK_ERROR",
+        message: "Impossible de vérifier le code auprès de Neon. Vérifiez votre connexion puis réessayez.",
+      } as const;
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
     }
@@ -190,9 +279,17 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     setPendingCount((count) => count + 1);
     try {
       const result = await confirmStudentCheckInAction(input);
+      if (result.ok) mutationRevision.current += 1;
       if (result.ok && result.patch) setState((current) => ({ ...current, ...result.patch }));
       if (result.ok) notify(result.alreadyRecorded ? "Votre présence était déjà enregistrée." : "Présence confirmée dans Neon.");
       return result;
+    } catch {
+      setSyncStatus("error");
+      return {
+        ok: false,
+        code: "NETWORK_ERROR",
+        message: "Neon n’a pas confirmé le pointage. Votre présence n’a pas été modifiée; réessayez.",
+      } as const;
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
     }
@@ -230,7 +327,9 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     resolveCorrectionRequest,
     resetData: () => reload(true),
     notify,
-  }), [state, viewerId, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify]);
+    syncStatus,
+    lastSyncedAt,
+  }), [state, viewerId, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
 
   return (
     <AcademicDataContext.Provider value={value}>
@@ -238,9 +337,9 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       <AnimatePresence>
         {toast && (
           <motion.div initial={reduceMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: 8 }} className="fixed bottom-4 right-4 z-[80] flex max-w-sm items-center gap-3 border bg-background px-4 py-3 shadow-lg" role="status">
-            <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-            <span className="text-sm font-medium">{toast}</span>
-            <Button variant="ghost" size="icon-sm" onClick={() => setToast("")} aria-label="Fermer la notification"><X /></Button>
+            {toast.type === "success" ? <CheckCircle2 className="size-4 shrink-0 text-emerald-600" /> : <AlertCircle className="size-4 shrink-0 text-red-600" />}
+            <span className="text-sm font-medium">{toast.message}</span>
+            <Button variant="ghost" size="icon-sm" onClick={() => setToast(null)} aria-label="Fermer la notification"><X /></Button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -248,6 +347,13 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
         <div className="pointer-events-none fixed bottom-4 left-4 z-[80] flex items-center gap-2 bg-foreground px-3 py-2 text-xs text-background">
           <RotateCcw className="size-3.5 animate-spin" />
           {!hydrated ? "Connexion à Neon" : "Synchronisation"}
+        </div>
+      )}
+      {hydrated && pendingCount === 0 && syncStatus === "error" && (
+        <div className="fixed bottom-4 left-4 z-[80] flex max-w-[calc(100vw-2rem)] items-center gap-2 border border-red-200 bg-background px-3 py-2 text-xs text-red-700 shadow-lg" role="alert">
+          <CloudOff className="size-4 shrink-0" />
+          <span>Données affichées hors synchronisation.</span>
+          <Button variant="outline" size="sm" onClick={() => void reload(true)}>Réessayer</Button>
         </div>
       )}
     </AcademicDataContext.Provider>

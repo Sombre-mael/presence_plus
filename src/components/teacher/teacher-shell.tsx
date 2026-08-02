@@ -10,11 +10,13 @@ import { getTeacherCorrectionNotifications } from "@/lib/student-domain";
 export function TeacherShell({
   children,
   user,
+  initialSidebarCollapsed = false,
 }: {
   children: ReactNode;
   user: UserSummary;
+  initialSidebarCollapsed?: boolean;
 }) {
-  const { state, resetData } = useAcademicData();
+  const { state, resetData, syncStatus } = useAcademicData();
   const notifications = [
     ...getTeacherCorrectionNotifications(state, user.id),
     ...getTeacherNotifications(state, user.id),
@@ -26,6 +28,8 @@ export function TeacherShell({
       user={user}
       anomalies={notifications}
       onResetDemo={resetData}
+      initialSidebarCollapsed={initialSidebarCollapsed}
+      syncStatus={syncStatus}
     >
       {children}
     </DashboardLayout>
