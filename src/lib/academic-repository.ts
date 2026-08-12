@@ -5,6 +5,7 @@ import type { DemoViewer } from "@/lib/demo-viewer";
 import type { AcademicDataState } from "@/types/admin";
 import type { AttendanceStatus } from "@/types";
 import type { Prisma } from "@/generated/prisma/client";
+import { reconcileExpiredScheduledSessions } from "@/lib/session-maintenance";
 
 export const ACADEMIC_TIME_ZONE = "Africa/Lubumbashi";
 
@@ -284,7 +285,7 @@ export async function getAuditLogsForViewer(viewer: DemoViewer): Promise<Academi
   return logs.map((log) => ({
     id: log.id,
     actorId: log.actorId,
-    actorName: log.actor.name,
+    actorName: log.actor?.name ?? "Système",
     action: log.action,
     entityType: log.entityType,
     entityId: log.entityId,
@@ -299,6 +300,7 @@ export type AcademicPatch = Partial<Omit<AcademicDataState, "version">>;
 export type AcademicCollection = keyof AcademicPatch;
 
 export async function getAcademicPatch(viewer: DemoViewer, keys: AcademicCollection[]): Promise<AcademicPatch> {
+  if (keys.includes("sessions")) await reconcileExpiredScheduledSessions();
   const entries = await Promise.all(keys.map(async (key) => {
     if (key === "users") return [key, await getUsersForViewer(viewer)] as const;
     if (key === "promotions") return [key, await getPromotionsForViewer(viewer)] as const;
@@ -312,6 +314,7 @@ export async function getAcademicPatch(viewer: DemoViewer, keys: AcademicCollect
 }
 
 export async function getAcademicSnapshot(viewer: DemoViewer): Promise<AcademicDataState> {
+  await reconcileExpiredScheduledSessions();
   const [users, promotions, courses, sessions, attendances, correctionRequests, auditLogs] = await Promise.all([
     getUsersForViewer(viewer),
     getPromotionsForViewer(viewer),

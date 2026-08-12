@@ -31,6 +31,7 @@ const actionLabels: Record<string, string> = {
   UPDATE_SESSION: "Modification d’une session",
   START_SESSION: "Démarrage d’une session",
   CANCEL_SESSION: "Annulation d’une session",
+  AUTO_CANCEL_SESSION: "Annulation automatique d’une session",
   COMPLETE_SESSION: "Clôture d’une session",
   CREATE_ATTENDANCE: "Saisie d’une présence",
   CORRECT_ATTENDANCE: "Correction d’une présence",
@@ -99,7 +100,10 @@ export function AuditManager() {
     return () => { active = false; };
   }, [action, actor, date, deferredQuery, entity, page]);
 
-  const actors = state.users.map((user) => [user.id, user.name] as [string, string]);
+  const actors: Array<[string, string]> = [
+    ["SYSTEM", "Système"],
+    ...state.users.map((user) => [user.id, user.name] as [string, string]),
+  ];
   const actions = Object.entries(actionLabels).sort((a, b) => a[1].localeCompare(b[1], "fr"));
   const entities = Object.entries(entityLabels).sort((a, b) => a[1].localeCompare(b[1], "fr"));
   const pageCount = Math.max(1, Math.ceil(total / 25));

@@ -50,6 +50,9 @@ import type {
 import type { AttendanceSource } from "@/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { addAcademicDays } from "@/lib/academic-calendar";
+import { prismaMutationFailure } from "@/lib/prisma-errors";
+import { isWithinSessionStartWindow } from "@/lib/session-lifecycle";
+import { SERIALIZABLE_TRANSACTION_OPTIONS } from "@/lib/transaction-options";
 
 export type AcademicActionResult<T = undefined> = MutationResult & {
   patch?: AcademicPatch;
@@ -84,27 +87,7 @@ async function audit(
   });
 }
 
-function prismaFailure(error: unknown, fallback: string): AcademicActionResult {
-  if (!error || typeof error !== "object" || !("code" in error)) {
-    return { ok: false, message: fallback };
-  }
-  const code = String(error.code);
-  const meta = "meta" in error && error.meta && typeof error.meta === "object"
-    ? error.meta as Record<string, unknown>
-    : {};
-  const target = Array.isArray(meta.target) ? meta.target.map(String) : [];
-  if (code === "P2002") {
-    if (target.includes("email")) return { ok: false, message: "Cette adresse e-mail est déjà utilisée.", fieldErrors: { email: "Adresse déjà utilisée." } };
-    if (target.includes("matricule")) return { ok: false, message: "Ce matricule est déjà utilisé.", fieldErrors: { matricule: "Matricule déjà utilisé." } };
-    if (target.includes("code")) return { ok: false, message: "Ce code de cours est déjà utilisé.", fieldErrors: { code: "Code déjà utilisé." } };
-    if (target.includes("name")) return { ok: false, message: "Ce nom est déjà utilisé.", fieldErrors: { name: "Nom déjà utilisé." } };
-    return { ok: false, message: "Une donnée identique existe déjà dans Neon." };
-  }
-  if (code === "P2003") return { ok: false, message: "Cette opération est bloquée par des données historiques liées." };
-  if (code === "P2025") return { ok: false, message: "Cet élément n’existe plus. Rechargez les données." };
-  if (code === "P2034") return { ok: false, message: "Les données ont changé simultanément. Rechargez puis réessayez." };
-  return { ok: false, message: fallback };
-}
+const prismaFailure = prismaMutationFailure;
 
 async function userStatusBlocker(
   database: Prisma.TransactionClient,
@@ -182,7 +165,11 @@ export async function loadAdminAuditLogsAction(input: AdminAuditQuery): Promise<
   const pageSize = Math.min(50, Math.max(10, Math.trunc(input.pageSize ?? 25)));
   const query = input.query?.trim();
   const where: Prisma.AuditLogWhereInput = {
-    ...(input.actorId ? { actorId: input.actorId } : {}),
+    ...(input.actorId === "SYSTEM"
+      ? { actorId: null }
+      : input.actorId
+        ? { actorId: input.actorId }
+        : {}),
     ...(input.action ? { action: input.action } : {}),
     ...(input.entityType ? { entityType: input.entityType } : {}),
     ...(input.date ? {
@@ -217,7 +204,7 @@ export async function loadAdminAuditLogsAction(input: AdminAuditQuery): Promise<
     items: logs.map((log) => ({
       id: log.id,
       actorId: log.actorId,
-      actorName: log.actor.name,
+      actorName: log.actor?.name ?? "Système",
       action: log.action,
       entityType: log.entityType,
       entityId: log.entityId,
@@ -254,7 +241,7 @@ export async function createUserAction(input: AdminUserInput) {
         },
       });
       await audit(viewer.id, "CREATE_USER", "User", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "L’utilisateur n’a pas pu être créé.");
   }
@@ -311,7 +298,7 @@ export async function updateUserAction(id: string, input: AdminUserInput) {
         },
       });
       await audit(viewer.id, "UPDATE_USER", "User", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "BUSINESS_ROLE") {
       return failure({ ok: false, message: error.message, fieldErrors: { role: "Conservez le rôle actuel ou utilisez un autre compte." } });
@@ -334,7 +321,7 @@ export async function deleteUserAction(id: string) {
     await prisma.$transaction(async (tx) => {
       await tx.user.delete({ where: { id } });
       await audit(viewer.id, "DELETE_USER", "User", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "L’utilisateur n’a pas pu être supprimé.");
   }
@@ -350,7 +337,7 @@ export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTI
       if (blocker) throw Object.assign(new Error(blocker), { code: "BUSINESS_RULE" });
       await tx.user.update({ where: { id }, data: { status } });
       await audit(viewer.id, status === "ACTIVE" ? "ACTIVATE_USER" : "DEACTIVATE_USER", "User", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "BUSINESS_RULE") return failure({ ok: false, message: error.message });
     return prismaFailure(error, "Le statut du compte n’a pas pu être modifié.");
@@ -370,7 +357,7 @@ export async function createPromotionAction(input: AdminPromotionInput) {
       const promotion = await tx.promotion.create({ data: { ...input, description: input.description?.trim() || null, name: input.name.trim(), department: input.department.trim() } });
       promotionId = promotion.id;
       await audit(viewer.id, "CREATE_PROMOTION", "Promotion", promotion.id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "La promotion n’a pas pu être créée.");
   }
@@ -387,7 +374,7 @@ export async function updatePromotionAction(id: string, input: AdminPromotionInp
     await prisma.$transaction(async (tx) => {
       await tx.promotion.update({ where: { id }, data: { ...input, description: input.description?.trim() || null, name: input.name.trim(), department: input.department.trim() } });
       await audit(viewer.id, "UPDATE_PROMOTION", "Promotion", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "La promotion n’a pas pu être modifiée.");
   }
@@ -403,7 +390,7 @@ export async function deletePromotionAction(id: string) {
     await prisma.$transaction(async (tx) => {
       await tx.promotion.delete({ where: { id } });
       await audit(viewer.id, "DELETE_PROMOTION", "Promotion", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "La promotion n’a pas pu être supprimée.");
   }
@@ -432,7 +419,7 @@ export async function createCourseAction(input: AdminCourseInput) {
       });
       courseId = course.id;
       await audit(viewer.id, "CREATE_COURSE", "Course", course.id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "Le cours n’a pas pu être créé.");
   }
@@ -460,7 +447,7 @@ export async function updateCourseAction(id: string, input: AdminCourseInput) {
         },
       });
       await audit(viewer.id, "UPDATE_COURSE", "Course", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "Le cours n’a pas pu être modifié.");
   }
@@ -476,7 +463,7 @@ export async function deleteCourseAction(id: string) {
     await prisma.$transaction(async (tx) => {
       await tx.course.delete({ where: { id } });
       await audit(viewer.id, "DELETE_COURSE", "Course", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     return prismaFailure(error, "Le cours n’a pas pu être supprimé.");
   }
@@ -495,7 +482,7 @@ export async function setCourseActiveAction(id: string, active: boolean) {
       const updated = await tx.course.updateMany({ where: { id }, data: { active } });
       if (!updated.count) throw Object.assign(new Error("Cours introuvable."), { code: "BUSINESS_RULE" });
       await audit(viewer.id, active ? "ACTIVATE_COURSE" : "DEACTIVATE_COURSE", "Course", id, undefined, tx);
-    }, { isolationLevel: "Serializable" });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "BUSINESS_RULE") return failure({ ok: false, message: error.message });
     return prismaFailure(error, "L’état du cours n’a pas pu être modifié.");
@@ -538,7 +525,7 @@ export async function createSessionAction(input: TeacherSessionInput) {
         courses: { connect: { id: course.id } },
       },
     });
-  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (!session) return failure({ ok: false, message: "Le cours est inactif ou ce créneau vient d'être réservé." });
   await audit(viewer.id, "CREATE_SESSION", "Session", session.id);
   return success(viewer, validation.message, ["sessions"], { id: session.id });
@@ -574,7 +561,7 @@ export async function updateSessionAction(id: string, input: TeacherSessionInput
       data: { name: input.name?.trim() || current.name || current.courseName, description: input.description?.trim() || null, scheduledStartAt: start, scheduledEndAt: end, room: input.room.trim(), lateThresholdMinutes: input.lateThresholdMinutes, courseId: course.id, promotionId: course.promotionId },
     });
     return result.count === 1;
-  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (!updated) return failure({ ok: false, message: "La session a changé ou le créneau vient d'être réservé." });
   await audit(viewer.id, "UPDATE_SESSION", "Session", id);
   return success(viewer, validation.message, ["sessions"]);
@@ -587,7 +574,7 @@ export async function startSessionAction(id: string) {
     const session = await tx.session.findUnique({ where: { id } });
     if (!session || session.teacherId !== viewer.id || session.status !== "SCHEDULED") return "INVALID" as const;
     const now = new Date();
-    if (now < new Date(session.scheduledStartAt.getTime() - 30 * 60_000) || now > session.scheduledEndAt) return "OUTSIDE_WINDOW" as const;
+    if (!isWithinSessionStartWindow(session.scheduledStartAt, session.scheduledEndAt, now)) return "OUTSIDE_WINDOW" as const;
     const active = await tx.session.count({ where: { teacherId: viewer.id, status: "ACTIVE" } });
     if (active) return "ACTIVE_EXISTS" as const;
     const students = await tx.user.findMany({
@@ -602,7 +589,7 @@ export async function startSessionAction(id: string) {
     }
     await tx.session.update({ where: { id }, data: { status: "ACTIVE", startedAt: new Date() } });
     return "STARTED" as const;
-  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (result === "OUTSIDE_WINDOW") return failure({ ok: false, message: "La session peut démarrer au plus tôt 30 minutes avant son horaire et avant sa fin prévue." });
   if (result === "ACTIVE_EXISTS") return failure({ ok: false, message: "Clôturez la session active avant d'en démarrer une autre." });
   if (result !== "STARTED") return failure({ ok: false, message: "Cette session ne peut pas être démarrée." });
@@ -641,7 +628,7 @@ export async function completeSessionAction(id: string) {
     }
     await tx.session.update({ where: { id }, data: { status: "COMPLETED", completedAt: new Date() } });
     return absent.length;
-  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (missing === null) return failure({ ok: false, message: "Cette session n’est pas active." });
   await audit(viewer.id, "COMPLETE_SESSION", "Session", id, { automaticAbsences: missing });
   return success(viewer, `Session clôturée. ${missing} absence(s) enregistrée(s).`, ["sessions", "attendances"]);
@@ -798,7 +785,7 @@ export async function createCorrectionRequestAction(input: CorrectionRequestInpu
       select: { id: true },
     });
     return { kind: "CREATED" as const, id: request.id };
-  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (outcome.kind === "SESSION_MISSING") return failure({ ok: false, message: "Session introuvable." });
   if (outcome.kind === "PENDING_EXISTS") return failure({ ok: false, message: "Une demande est déjà en attente pour cette session." });
   if (outcome.kind === "STATUS_UNCHANGED") return failure({ ok: false, message: "Le statut demandé est déjà celui enregistré." });
@@ -852,7 +839,7 @@ export async function resolveCorrectionRequestAction(input: CorrectionResolution
     }
     await tx.attendanceCorrectionRequest.update({ where: { id: request.id }, data: { status: input.decision === "APPROVE" ? "APPROVED" : "REJECTED", decisionReason: input.reason.trim(), resolvedStatus: input.decision === "APPROVE" ? finalStatus : null, resolvedById: viewer.id, resolvedAt: new Date() } });
     return { requestId: request.id, finalStatus };
-  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (!outcome) return failure({ ok: false, message: "Cette demande n’est plus disponible." });
   await audit(
     viewer.id,

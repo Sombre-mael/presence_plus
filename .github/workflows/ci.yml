@@ -27,3 +27,35 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+  e2e:
+    needs: quality
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: presence-plus-neon-e2e
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL_E2E }}
+      DATABASE_URL_E2E: ${{ secrets.DATABASE_URL_E2E }}
+      AUTH_SECRET: ${{ secrets.AUTH_SECRET_E2E }}
+      AUTH_SECRET_E2E: ${{ secrets.AUTH_SECRET_E2E }}
+      E2E_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec prisma validate
+      - run: pnpm db:migrate:deploy
+      - run: pnpm build
+      - run: pnpm test:e2e

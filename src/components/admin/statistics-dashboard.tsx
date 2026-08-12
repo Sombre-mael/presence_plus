@@ -101,15 +101,15 @@ export function StatisticsDashboard() {
 
       <div className="grid gap-3 border bg-background p-4 md:grid-cols-3">
         <Select value={period} onValueChange={(value) => setPeriod(value as StatisticsPeriod)}>
-          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full" aria-label="Période statistique"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="7D">7 derniers jours</SelectItem><SelectItem value="30D">30 derniers jours</SelectItem><SelectItem value="180D">180 derniers jours</SelectItem></SelectContent>
         </Select>
         <Select value={promotionId || "ALL"} onValueChange={(value) => { setPromotionId(value === "ALL" ? "" : value); setCourseId(""); }}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="Toutes les promotions" /></SelectTrigger>
+          <SelectTrigger className="w-full" aria-label="Promotion statistique"><SelectValue placeholder="Toutes les promotions" /></SelectTrigger>
           <SelectContent><SelectItem value="ALL">Toutes les promotions</SelectItem>{state.promotions.map((promotion) => <SelectItem key={promotion.id} value={promotion.id}>{promotion.name}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={courseId || "ALL"} onValueChange={(value) => setCourseId(value === "ALL" ? "" : value)}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="Tous les cours" /></SelectTrigger>
+          <SelectTrigger className="w-full" aria-label="Cours statistique"><SelectValue placeholder="Tous les cours" /></SelectTrigger>
           <SelectContent><SelectItem value="ALL">Tous les cours</SelectItem>{state.courses.filter((course) => !promotionId || course.promotionId === promotionId).map((course) => <SelectItem key={course.id} value={course.id}>{course.code} · {course.name}</SelectItem>)}</SelectContent>
         </Select>
       </div>

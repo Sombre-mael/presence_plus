@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { cleanupSessionFixture, createActiveSessionFixture, futureAcademicDate, selectDemoProfile } from "./helpers";
+import { cleanupSessionFixture, createActiveSessionFixture, e2eLabel, futureAcademicDate, selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -20,13 +20,15 @@ test("la navigation enseignant est animée, compacte et persistante", async ({ p
 });
 
 test("une session peut être planifiée et persiste après rechargement", async ({ page }) => {
+  const title = e2eLabel("Session planifiée");
   await page.goto("/teacher/sessions/new");
+  await page.getByLabel("Titre de la séance").fill(title);
   await page.getByLabel("Date").fill(futureAcademicDate());
   await page.getByLabel("Salle").fill("C20");
   await page.getByLabel("Heure de début").fill("13:00");
   await page.getByLabel("Heure de fin").fill("15:00");
   await page.getByRole("button", { name: "Planifier la session" }).click();
-  await expect(page.getByRole("heading", { name: "Algorithmique avancée" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(page.getByText("La séance est prête")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Salle")).toBeVisible();

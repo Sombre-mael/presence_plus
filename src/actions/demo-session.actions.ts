@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import {
   DEMO_VIEWER_COOKIE,
   DEMO_VIEWER_IDS,
@@ -16,10 +17,10 @@ export async function selectDemoViewerAction(id: DemoViewerId) {
   let user: { role: "ADMIN" | "TEACHER" | "STUDENT" } | null;
 
   try {
-    user = await prisma.user.findFirst({
+    user = await withDatabaseRetry(() => prisma.user.findFirst({
       where: { id, status: "ACTIVE" },
       select: { role: true },
-    });
+    }));
   } catch {
     redirect("/login?error=database");
   }

@@ -44,7 +44,7 @@ export interface AdminCourse {
 
 export interface AdminAuditLog {
   id: string;
-  actorId: string;
+  actorId: string | null;
   actorName: string;
   action: string;
   entityType: string;

@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { apiFailure, PRIVATE_RESPONSE_HEADERS } from "@/lib/api-response";
 import { countSessionsForViewer, getSessionsForViewer } from "@/lib/academic-repository";
 import { getDemoViewer } from "@/lib/demo-viewer";
+import { reconcileExpiredScheduledSessions } from "@/lib/session-maintenance";
 
 const querySchema = z.object({
   status: z.enum(["SCHEDULED", "ACTIVE", "COMPLETED", "CANCELLED"]).optional(),
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
   try {
     const viewer = await getDemoViewer();
     if (!viewer) return Response.json({ error: "Profil de demonstration requis." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
+    await reconcileExpiredScheduledSessions();
     const where: Prisma.SessionWhereInput = {
       ...(result.data.status ? { status: result.data.status } : {}),
       ...(result.data.teacher ? { teacher: { name: { contains: result.data.teacher, mode: "insensitive" } } } : {}),

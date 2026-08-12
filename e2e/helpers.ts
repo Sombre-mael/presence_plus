@@ -1,15 +1,21 @@
 import { expect, type Page } from "@playwright/test";
-import "dotenv/config";
-import { Pool } from "pg";
+import { assertE2EDatabase, createE2EPool } from "./database";
+import { e2eId, e2eLabel, getE2EEnvironment } from "./environment";
+
+export { e2eLabel } from "./environment";
 
 export async function selectDemoProfile(page: Page, name: "Aline Kabeya" | "Patrick Ilunga" | "Sarah Mbuyi") {
   await page.goto("/login");
   await page.getByRole("button", { name: new RegExp(name) }).click();
-  await expect(page).not.toHaveURL(/\/login/);
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 60_000 });
 }
 
 export function futureAcademicDate(days = 7) {
   const value = new Date(Date.now() + days * 86_400_000);
+  return academicDate(value);
+}
+
+export function academicDate(value = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Lubumbashi",
     year: "numeric",
@@ -18,12 +24,82 @@ export function futureAcademicDate(days = 7) {
   }).format(value);
 }
 
+export function academicTime(value = new Date()) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Africa/Lubumbashi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(value).replace(" h ", ":");
+}
+
+export function startableSessionSlot(now = new Date()) {
+  const localParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Lubumbashi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const localHour = Number(localParts.find((part) => part.type === "hour")?.value ?? 0);
+  const localMinute = Number(localParts.find((part) => part.type === "minute")?.value ?? 0);
+
+  if (localHour === 23 && localMinute >= 30) {
+    const start = new Date(now.getTime() + (60 - now.getMinutes()) * 60_000);
+    const end = new Date(start.getTime() + 90 * 60_000);
+    return { date: academicDate(start), startTime: academicTime(start), endTime: academicTime(end) };
+  }
+
+  const start = new Date(now.getTime() + 5 * 60_000);
+  const end = new Date(Math.min(
+    start.getTime() + 90 * 60_000,
+    new Date(`${academicDate(start)}T21:59:00Z`).getTime(),
+  ));
+  return { date: academicDate(start), startTime: academicTime(start), endTime: academicTime(end) };
+}
+
+export async function getDemoAcademicContext() {
+  const pool = createE2EPool();
+  try {
+    await assertE2EDatabase(pool);
+    const result = await pool.query<{
+      promotionId: string;
+      promotionName: string;
+    }>(
+      `SELECT p.id AS "promotionId", p.name AS "promotionName"
+       FROM "User" student
+       JOIN "Promotion" p ON p.id = student."promotionId"
+       WHERE student.id = 'u4'`,
+    );
+    if (!result.rows[0]) throw new Error("La promotion de Sarah est introuvable.");
+    return result.rows[0];
+  } finally {
+    await pool.end();
+  }
+}
+
+export function uniqueCourseFixture() {
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return {
+    code: `E2E${suffix}`.slice(0, 12),
+    name: e2eLabel(`Cours ${suffix}`),
+  };
+}
+
+export function uniqueUserFixture() {
+  const suffix = Math.random().toString(36).slice(2, 10).toLowerCase();
+  return {
+    name: e2eLabel(`Utilisateur ${suffix}`),
+    email: `e2e+${getE2EEnvironment().runId}-${suffix}@presence.plus`,
+  };
+}
+
 export async function createActiveSessionFixture() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const id = `e2e-active-${Date.now()}`;
+  const pool = createE2EPool();
+  const id = e2eId("active-session");
   const start = new Date();
   const end = new Date(start.getTime() + 2 * 60 * 60_000);
   try {
+    await assertE2EDatabase(pool);
     const course = await pool.query<{ id: string; promotionId: string; teacherId: string }>(
       `SELECT id, "promotionId", "teacherId" FROM "Course" WHERE id = $1`,
       ["c1"],
@@ -31,7 +107,7 @@ export async function createActiveSessionFixture() {
     if (!course.rows[0]) throw new Error("Le cours c1 requis par la fixture E2E est introuvable.");
     await pool.query(
       `INSERT INTO "Session" (id, name, "courseId", "promotionId", "teacherId", status, "scheduledStartAt", "scheduledEndAt", "startedAt", room, "lateThresholdMinutes") VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6, $7, $6, $8, $9)`,
-      [id, "Session active Playwright", course.rows[0].id, course.rows[0].promotionId, course.rows[0].teacherId, start, end, "E2E", 10],
+      [id, e2eLabel("Session active"), course.rows[0].id, course.rows[0].promotionId, course.rows[0].teacherId, start, end, "E2E", 10],
     );
     await pool.query(
       `INSERT INTO "SessionEnrollment" (id, "sessionId", "studentId") SELECT 'e2e-enrollment-' || $1 || '-' || id, $1, id FROM "User" WHERE role = 'STUDENT' AND status = 'ACTIVE' AND "promotionId" = $2`,
@@ -44,13 +120,24 @@ export async function createActiveSessionFixture() {
 }
 
 export async function cleanupSessionFixture(id: string) {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = createE2EPool();
   const client = await pool.connect();
   try {
+    await assertE2EDatabase(client);
     await client.query("BEGIN");
+    const corrections = await client.query<{ id: string }>(
+      `SELECT id FROM "AttendanceCorrectionRequest" WHERE "sessionId" = $1`,
+      [id],
+    );
+    const attendances = await client.query<{ id: string }>(
+      `SELECT id FROM "Attendance" WHERE "sessionId" = $1`,
+      [id],
+    );
+    const entityIds = [id, ...corrections.rows.map((row) => row.id), ...attendances.rows.map((row) => row.id)];
+    await client.query(`DELETE FROM "AuditLog" WHERE "entityId" = ANY($1::text[]) OR metadata->>'sessionId' = $2`, [entityIds, id]);
     await client.query(`DELETE FROM "AttendanceCorrectionRequest" WHERE "sessionId" = $1`, [id]);
     await client.query(`DELETE FROM "Attendance" WHERE "sessionId" = $1`, [id]);
-    await client.query(`DELETE FROM "AuditLog" WHERE "entityId" = $1 OR "entityId" LIKE $2`, [id, `${id}:%`]);
+    await client.query(`DELETE FROM "SessionEnrollment" WHERE "sessionId" = $1`, [id]);
     await client.query(`DELETE FROM "Session" WHERE id = $1`, [id]);
     await client.query("COMMIT");
   } catch (error) {
@@ -63,18 +150,19 @@ export async function cleanupSessionFixture(id: string) {
 }
 
 export async function latestPendingCorrectionFixture() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = createE2EPool();
   try {
+    await assertE2EDatabase(pool);
     let row: { id: string; sessionId: string } | undefined;
     for (let attempt = 0; attempt < 10 && !row; attempt += 1) {
       const request = await pool.query<{ id: string; sessionId: string }>(
-        `SELECT id, "sessionId" FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' AND reason LIKE '[E2E]%' ORDER BY "createdAt" DESC LIMIT 1`,
+        `SELECT id, "sessionId" FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' AND reason LIKE '[E2E:%' ORDER BY "createdAt" DESC LIMIT 1`,
         ["u4"],
       );
       row = request.rows[0];
       if (!row) await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    if (!row) throw new Error("La demande de correction E2E n'a pas été créée.");
+    if (!row) throw new Error("La demande de correction E2E n’a pas été créée.");
     const attendance = await pool.query<{
       id: string;
       status: string;
@@ -94,13 +182,14 @@ export async function latestPendingCorrectionFixture() {
 }
 
 export async function cleanupPendingCorrectionFixtures() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = createE2EPool();
   const client = await pool.connect();
   try {
+    await assertE2EDatabase(client);
     await client.query("BEGIN");
     const stale = await client.query<{ id: string }>(
-      `SELECT id FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' AND (reason LIKE '[E2E]%' OR reason = $2)`,
-      ["u4", "J’étais présent dès le début de cette séance."],
+      `SELECT id FROM "AttendanceCorrectionRequest" WHERE "studentId" = $1 AND status = 'PENDING' AND reason LIKE '[E2E:%'`,
+      ["u4"],
     );
     for (const request of stale.rows) {
       await client.query(`DELETE FROM "AuditLog" WHERE "entityId" = $1`, [request.id]);
@@ -117,9 +206,10 @@ export async function cleanupPendingCorrectionFixtures() {
 }
 
 export async function cleanupCorrectionFixture(fixture: Awaited<ReturnType<typeof latestPendingCorrectionFixture>>) {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = createE2EPool();
   const client = await pool.connect();
   try {
+    await assertE2EDatabase(client);
     await client.query("BEGIN");
     await client.query(`DELETE FROM "AttendanceCorrectionRequest" WHERE id = $1`, [fixture.id]);
     await client.query(`DELETE FROM "AuditLog" WHERE "entityId" = $1`, [fixture.id]);

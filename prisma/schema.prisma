@@ -93,6 +93,7 @@ model Session {
   @@index([promotionId])
   @@index([status])
   @@index([scheduledStartAt])
+  @@index([status, scheduledEndAt])
 }
 
 model SessionEnrollment {
@@ -164,13 +165,13 @@ model AttendanceCorrectionRequest {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  actorId    String
+  actorId    String?
   action     String
   entityType String
   entityId   String
   metadata   Json?
   createdAt  DateTime @default(now())
-  actor      User     @relation(fields: [actorId], references: [id])
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([actorId])
   @@index([createdAt])

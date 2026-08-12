@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { authSecret } from "@/lib/env.server";
 import { DatabaseUnavailableError } from "@/lib/server-errors";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import type { Role, UserSummary } from "@/types";
 
 export const DEMO_VIEWER_COOKIE = "presence-plus-demo-viewer";
@@ -52,7 +53,7 @@ export async function getDemoViewer(): Promise<DemoViewer | null> {
 
   let user;
   try {
-    user = await prisma.user.findFirst({
+    user = await withDatabaseRetry(() => prisma.user.findFirst({
       where: { id, status: "ACTIVE" },
       select: {
         id: true,
@@ -63,7 +64,7 @@ export async function getDemoViewer(): Promise<DemoViewer | null> {
         promotionId: true,
         promotion: { select: { name: true } },
       },
-    });
+    }));
   } catch (error) {
     throw new DatabaseUnavailableError("Impossible de verifier le profil dans Neon.", { cause: error });
   }

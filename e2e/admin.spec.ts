@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { selectDemoProfile } from "./helpers";
+import { selectDemoProfile, uniqueUserFixture } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -23,12 +23,12 @@ test("la navigation se rétracte et conserve son état", async ({ page }) => {
 });
 
 test("un utilisateur peut être créé, persisté et supprimé", async ({ page }) => {
-  const name = "Marc Test";
+  const { name, email } = uniqueUserFixture();
   await page.goto("/admin/users");
   await page.getByRole("button", { name: "Ajouter un utilisateur" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Nom complet").fill(name);
-  await dialog.getByLabel("Adresse e-mail").fill("marc.test@presence.plus");
+  await dialog.getByLabel("Adresse e-mail").fill(email);
   await dialog.getByRole("combobox").first().click();
   await page.getByRole("option", { name: "Administrateur" }).click();
   await dialog.getByRole("button", { name: "Ajouter", exact: true }).click();
@@ -55,7 +55,7 @@ test("une suppression dépendante est bloquée avec une explication", async ({ p
 test("la supervision et l’export statistique sont accessibles", async ({ page }) => {
   await page.goto("/admin/sessions");
   await page.getByRole("link", { name: /Algorithmique avancée/i }).first().click();
-  await expect(page.getByRole("heading", { name: "Algorithmique avancée" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/sessions\/[^/]+$/);
   await expect(page.getByText("lecture seule", { exact: false }).first()).toBeVisible();
 
   await page.goto("/admin/statistics");

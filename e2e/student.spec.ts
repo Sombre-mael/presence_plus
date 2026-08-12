@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cleanupCorrectionFixture, cleanupPendingCorrectionFixtures, cleanupSessionFixture, createActiveSessionFixture, latestPendingCorrectionFixture, selectDemoProfile } from "./helpers";
+import { cleanupCorrectionFixture, cleanupPendingCorrectionFixtures, cleanupSessionFixture, createActiveSessionFixture, e2eLabel, latestPendingCorrectionFixture, selectDemoProfile } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -74,7 +74,7 @@ test("une demande étudiante peut être acceptée par l’enseignant", async ({ 
   await page.goto("/student/history");
   await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
   await page.getByRole("button", { name: "Demander une correction" }).click();
-  await page.getByPlaceholder("Décrivez ce qui doit être vérifié…").fill("[E2E] J’étais présent dès le début de cette séance.");
+  await page.getByPlaceholder("Décrivez ce qui doit être vérifié…").fill(e2eLabel("J’étais présent dès le début de cette séance."));
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(page.getByText("Demande de correction").last()).toBeVisible();
   const fixture = await latestPendingCorrectionFixture();
@@ -91,6 +91,32 @@ test("une demande étudiante peut être acceptée par l’enseignant", async ({ 
     await page.goto("/student/history");
     await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
     await expect(page.getByText("Acceptée")).toBeVisible();
+  } finally {
+    await cleanupCorrectionFixture(fixture);
+  }
+});
+
+test("une demande étudiante peut être refusée avec un motif", async ({ page }) => {
+  await cleanupPendingCorrectionFixtures();
+  await page.goto("/student/history");
+  await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
+  await page.getByRole("button", { name: "Demander une correction" }).click();
+  await page.getByPlaceholder("Décrivez ce qui doit être vérifié…").fill(e2eLabel("Je souhaite faire vérifier cette présence."));
+  await page.getByRole("button", { name: "Envoyer" }).click();
+  const fixture = await latestPendingCorrectionFixture();
+  try {
+    await selectDemoProfile(page, "Patrick Ilunga");
+    await page.goto(`/teacher/sessions/${fixture.sessionId}/attendances`);
+    await page.getByRole("button", { name: "Examiner" }).click();
+    await page.getByRole("button", { name: "Refuser" }).click();
+    await page.getByPlaceholder("Expliquez votre décision…").fill("Le registre de séance ne confirme pas cette demande.");
+    await page.getByRole("button", { name: "Enregistrer la décision" }).click();
+    await expect(page.getByText("Demande refusée.")).toBeVisible();
+
+    await selectDemoProfile(page, "Sarah Mbuyi");
+    await page.goto("/student/history");
+    await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
+    await expect(page.getByText("Refusée")).toBeVisible();
   } finally {
     await cleanupCorrectionFixture(fixture);
   }

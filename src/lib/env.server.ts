@@ -13,10 +13,13 @@ export function databaseUrl() {
   try {
     const url = new URL(value);
     if (!["postgres:", "postgresql:"].includes(url.protocol)) throw new Error("Protocole invalide");
+    if (["prefer", "require", "verify-ca"].includes(url.searchParams.get("sslmode") ?? "")) {
+      url.searchParams.set("sslmode", "verify-full");
+    }
+    return url.toString();
   } catch (error) {
     throw new ServerConfigurationError(`DATABASE_URL n'est pas une URL PostgreSQL valide: ${error instanceof Error ? error.message : "format invalide"}.`);
   }
-  return value;
 }
 
 export function authSecret() {
