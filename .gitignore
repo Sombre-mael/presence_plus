@@ -40,7 +40,7 @@ yarn-error.log*
 # browser tests
 /test-results/
 /playwright-report/
-.e2e-demo-profiles.sha256
+.e2e-demo-profiles.json
 
 # typescript
 *.tsbuildinfo

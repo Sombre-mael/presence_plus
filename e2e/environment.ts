@@ -15,14 +15,16 @@ function strictSslUrl(value: string) {
 export function getE2EEnvironment() {
   const databaseUrl = process.env.DATABASE_URL_E2E;
   const authSecret = process.env.AUTH_SECRET_E2E;
+  const authPassword = process.env.AUTH_E2E_PASSWORD;
   const runId = (process.env.E2E_RUN_ID || "local")
     .replace(/[^a-zA-Z0-9-]/g, "-")
     .slice(0, 32);
 
   if (!databaseUrl) throw new Error("DATABASE_URL_E2E est requis pour les tests Playwright.");
   if (!authSecret) throw new Error("AUTH_SECRET_E2E est requis pour les tests Playwright.");
+  if (!authPassword || authPassword.length < 12) throw new Error("AUTH_E2E_PASSWORD est requis et doit contenir au moins 12 caractères.");
 
-  return { databaseUrl: strictSslUrl(databaseUrl), authSecret, runId };
+  return { databaseUrl: strictSslUrl(databaseUrl), authSecret, authPassword, runId };
 }
 
 export function e2eLabel(label: string) {

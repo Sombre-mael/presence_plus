@@ -4,7 +4,7 @@ import { cleanupAllE2EData, queryE2E } from "./database";
 import {
   e2eLabel,
   getDemoAcademicContext,
-  selectDemoProfile,
+  loginAs,
   startableSessionSlot,
   uniqueCourseFixture,
 } from "./helpers";
@@ -23,7 +23,7 @@ test.describe.serial("jalon transversal de stabilisation", () => {
 
     try {
       console.log("[stabilisation] administration: création du cours");
-      await selectDemoProfile(page, "Aline Kabeya");
+      await loginAs(page, "Aline Kabeya");
       await page.goto("/admin/courses");
       await page.getByRole("button", { name: "Ajouter un cours" }).click();
       const courseDialog = page.getByRole("dialog");
@@ -51,7 +51,7 @@ test.describe.serial("jalon transversal de stabilisation", () => {
       expect(courseAudit.rowCount).toBe(1);
 
       console.log("[stabilisation] enseignant: planification et conflits");
-      await selectDemoProfile(page, "Patrick Ilunga");
+      await loginAs(page, "Patrick Ilunga");
       await page.goto("/teacher/sessions/new");
       await page.getByLabel("Titre de la séance").fill(sessionName);
       await page.getByLabel("Cours").click();
@@ -94,7 +94,7 @@ test.describe.serial("jalon transversal de stabilisation", () => {
       expect(Number(active.rows[0]?.enrolled ?? 0)).toBeGreaterThan(0);
 
       console.log("[stabilisation] étudiant: pointage et idempotence");
-      await selectDemoProfile(page, "Sarah Mbuyi");
+      await loginAs(page, "Sarah Mbuyi");
       await page.goto("/student/check-in");
       await page.getByRole("tab", { name: "Code manuel" }).click();
       await page.getByLabel("Code affiché par l’enseignant").fill(code!);
@@ -116,7 +116,7 @@ test.describe.serial("jalon transversal de stabilisation", () => {
       expect(Number(attendance.rows[0]?.count ?? 0)).toBe(1);
 
       console.log("[stabilisation] enseignant: clôture atomique");
-      await selectDemoProfile(page, "Patrick Ilunga");
+      await loginAs(page, "Patrick Ilunga");
       await page.goto(`/teacher/sessions/${sessionId}`);
       await page.getByRole("button", { name: "Clôturer", exact: true }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Clôturer la session" }).click();
@@ -133,7 +133,7 @@ test.describe.serial("jalon transversal de stabilisation", () => {
       expect(Number(completed.rows[0]?.missing ?? -1)).toBe(0);
 
       console.log("[stabilisation] étudiant: demandes concurrentes");
-      await selectDemoProfile(page, "Sarah Mbuyi");
+      await loginAs(page, "Sarah Mbuyi");
       await page.goto("/student/history");
       await page.getByRole("button").filter({ hasText: course.name }).click();
       secondStudentPage = await context.newPage();
@@ -152,7 +152,7 @@ test.describe.serial("jalon transversal de stabilisation", () => {
       secondStudentPage = undefined;
 
       console.log("[stabilisation] enseignant: résolution de la correction");
-      await selectDemoProfile(page, "Patrick Ilunga");
+      await loginAs(page, "Patrick Ilunga");
       await page.goto(`/teacher/sessions/${sessionId}/attendances`);
       await expect(page.getByRole("heading", { name: "Demandes de correction" })).toBeVisible();
       await page.getByRole("button", { name: "Examiner" }).click();
@@ -163,13 +163,13 @@ test.describe.serial("jalon transversal de stabilisation", () => {
       await expect(page.getByText("Correction acceptée et appliquée.")).toBeVisible();
 
       console.log("[stabilisation] étudiant: décision confirmée");
-      await selectDemoProfile(page, "Sarah Mbuyi");
+      await loginAs(page, "Sarah Mbuyi");
       await page.goto("/student/history");
       await page.getByRole("button").filter({ hasText: course.name }).click();
       await expect(page.getByText("Acceptée")).toBeVisible();
 
       console.log("[stabilisation] administration: statistiques, export et audit");
-      await selectDemoProfile(page, "Aline Kabeya");
+      await loginAs(page, "Aline Kabeya");
       await page.goto(`/admin/sessions?course=${courseId}&status=COMPLETED&date=${slot.date}`);
       await expect(page.getByText(course.name).first()).toBeVisible();
       await page.goto("/admin/statistics");

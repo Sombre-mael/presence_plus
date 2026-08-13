@@ -15,6 +15,11 @@ export interface AdminUser {
   status: UserStatus;
   promotionId?: string;
   matricule?: string;
+  activatedAt?: string;
+  mustChangePassword?: boolean;
+  lastLoginAt?: string;
+  sessionVersion?: number;
+  invitationPending?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -66,7 +71,7 @@ export interface AcademicDataState {
 
 export type AdminDataState = AcademicDataState;
 
-export type AdminUserInput = Omit<AdminUser, "id" | "createdAt" | "updatedAt">;
+export type AdminUserInput = Pick<AdminUser, "name" | "email" | "role" | "status" | "promotionId" | "matricule">;
 export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt" | "updatedAt">;
 export type AdminCourseInput = Omit<AdminCourse, "id" | "createdAt" | "updatedAt">;
 

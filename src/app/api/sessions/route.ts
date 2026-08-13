@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { apiFailure, PRIVATE_RESPONSE_HEADERS } from "@/lib/api-response";
 import { countSessionsForViewer, getSessionsForViewer } from "@/lib/academic-repository";
-import { getDemoViewer } from "@/lib/demo-viewer";
+import { getBusinessViewer } from "@/lib/authenticated-viewer";
 import { reconcileExpiredScheduledSessions } from "@/lib/session-maintenance";
 
 const querySchema = z.object({
@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const viewer = await getDemoViewer();
-    if (!viewer) return Response.json({ error: "Profil de demonstration requis." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
+    const viewer = await getBusinessViewer();
+    if (!viewer) return Response.json({ error: "Authentification requise." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
     await reconcileExpiredScheduledSessions();
     const where: Prisma.SessionWhereInput = {
       ...(result.data.status ? { status: result.data.status } : {}),

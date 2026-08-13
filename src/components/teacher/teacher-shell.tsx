@@ -27,7 +27,7 @@ export function TeacherShell({
       role="TEACHER"
       user={user}
       anomalies={notifications}
-      onResetDemo={resetData}
+      onReloadData={resetData}
       initialSidebarCollapsed={initialSidebarCollapsed}
       syncStatus={syncStatus}
     >

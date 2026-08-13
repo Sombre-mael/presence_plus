@@ -13,7 +13,7 @@ export function StudentShell({ children, user, initialSidebarCollapsed = false }
       role="STUDENT"
       user={user}
       anomalies={getStudentNotifications(state, user.id)}
-      onResetDemo={resetData}
+      onReloadData={resetData}
       initialSidebarCollapsed={initialSidebarCollapsed}
       syncStatus={syncStatus}
     >

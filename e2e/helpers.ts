@@ -1,12 +1,21 @@
 import { expect, type Page } from "@playwright/test";
+import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
 import { assertE2EDatabase, createE2EPool } from "./database";
 import { e2eId, e2eLabel, getE2EEnvironment } from "./environment";
 
 export { e2eLabel } from "./environment";
 
-export async function selectDemoProfile(page: Page, name: "Aline Kabeya" | "Patrick Ilunga" | "Sarah Mbuyi") {
+export async function loginAs(page: Page, name: "Aline Kabeya" | "Patrick Ilunga" | "Sarah Mbuyi") {
+  const identifiers = {
+    "Aline Kabeya": "aline@presence.plus",
+    "Patrick Ilunga": "patrick@presence.plus",
+    "Sarah Mbuyi": "INF22-041",
+  } as const;
   await page.goto("/login");
-  await page.getByRole("button", { name: new RegExp(name) }).click();
+  await page.getByLabel("E-mail ou matricule").fill(identifiers[name]);
+  await page.getByLabel("Mot de passe", { exact: true }).fill(getE2EEnvironment().authPassword);
+  await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 60_000 });
 }
 
@@ -91,6 +100,71 @@ export function uniqueUserFixture() {
     name: e2eLabel(`Utilisateur ${suffix}`),
     email: `e2e+${getE2EEnvironment().runId}-${suffix}@presence.plus`,
   };
+}
+
+export async function createAuthUserFixture(options: {
+  status?: "ACTIVE" | "INACTIVE";
+  activated?: boolean;
+  mustChangePassword?: boolean;
+  role?: "ADMIN" | "TEACHER" | "STUDENT";
+  password?: string;
+} = {}) {
+  const pool = createE2EPool();
+  const id = e2eId("auth-user");
+  const suffix = id.slice(-8);
+  const email = `e2e+${getE2EEnvironment().runId}-${suffix}@presence.plus`;
+  const password = options.password ?? getE2EEnvironment().authPassword;
+  const passwordHash = await bcrypt.hash(password, 12);
+  const activated = options.activated ?? true;
+  try {
+    await assertE2EDatabase(pool);
+    await pool.query(
+      `INSERT INTO "User" (id, name, email, "passwordHash", role, status, "activatedAt", "mustChangePassword", "passwordChangedAt", "sessionVersion", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, e2eLabel(`Compte Auth ${suffix}`), email, passwordHash, options.role ?? "ADMIN", options.status ?? "ACTIVE", activated ? new Date() : null, options.mustChangePassword ?? false],
+    );
+    return { id, email, password };
+  } finally {
+    await pool.end();
+  }
+}
+
+export async function createAuthTokenFixture(userId: string, type: "INVITATION" | "PASSWORD_RESET", expired = false) {
+  const pool = createE2EPool();
+  const token = randomBytes(32).toString("base64url");
+  try {
+    await assertE2EDatabase(pool);
+    await pool.query(
+      `INSERT INTO "AuthToken" (id, "userId", type, "tokenHash", "expiresAt", "createdAt")
+       VALUES ($1, $2, $3, $4,
+         (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + CASE WHEN $5 THEN INTERVAL '-1 minute' ELSE INTERVAL '30 minutes' END,
+         CURRENT_TIMESTAMP AT TIME ZONE 'UTC')`,
+      [e2eId("auth-token"), userId, type, createHash("sha256").update(token).digest("hex"), expired],
+    );
+    return token;
+  } finally {
+    await pool.end();
+  }
+}
+
+export async function cleanupAuthUserFixture(userId: string) {
+  const pool = createE2EPool();
+  const client = await pool.connect();
+  try {
+    await assertE2EDatabase(client);
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM "AuditLog" WHERE "actorId" = $1 OR "entityId" = $1`, [userId]);
+    await client.query(`DELETE FROM "AuthToken" WHERE "userId" = $1`, [userId]);
+    await client.query(`DELETE FROM "AuthThrottle" WHERE "userId" = $1`, [userId]);
+    await client.query(`DELETE FROM "User" WHERE id = $1`, [userId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }
 
 export async function createActiveSessionFixture() {

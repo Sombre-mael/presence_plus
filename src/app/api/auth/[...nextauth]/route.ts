@@ -1,12 +1,6 @@
-const response = {
-  error: "AUTH_NOT_CONFIGURED",
-  message: "Auth.js sera configuré dans le prochain jalon.",
-};
+import NextAuth from "next-auth";
+import { authOptions } from "@/auth";
 
-export function GET() {
-  return Response.json(response, { status: 501 });
-}
+const handler = NextAuth(authOptions);
 
-export function POST() {
-  return Response.json(response, { status: 501 });
-}
+export { handler as GET, handler as POST };

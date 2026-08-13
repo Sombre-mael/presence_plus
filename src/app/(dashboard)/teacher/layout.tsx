@@ -4,12 +4,14 @@ import { cookies } from "next/headers";
 import { AcademicDataProvider } from "@/components/admin/admin-data-provider";
 import { TeacherShell } from "@/components/teacher/teacher-shell";
 import { getAcademicSnapshot } from "@/lib/academic-repository";
-import { getDemoViewer, roleHome } from "@/lib/demo-viewer";
+import { getAuthenticatedViewer } from "@/lib/authenticated-viewer";
+import { roleHome } from "@/lib/auth-navigation";
 
 export default async function TeacherLayout({ children }: { children: ReactNode }) {
-  const viewer = await getDemoViewer();
+  const viewer = await getAuthenticatedViewer();
   if (!viewer) redirect("/login");
   if (viewer.role !== "TEACHER") redirect(roleHome(viewer.role));
+  if (viewer.mustChangePassword) redirect("/change-password");
   const collapsed = (await cookies()).get("presence-plus-teacher-sidebar")?.value === "collapsed";
   const initialState = await getAcademicSnapshot(viewer);
   return (

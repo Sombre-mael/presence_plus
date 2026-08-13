@@ -15,6 +15,11 @@ model User {
   passwordHash         String
   role                 Role
   status               UserStatus
+  activatedAt          DateTime?
+  mustChangePassword   Boolean                       @default(true)
+  passwordChangedAt    DateTime?
+  lastLoginAt          DateTime?
+  sessionVersion       Int                           @default(1)
   createdAt            DateTime                      @default(now())
   promotionId          String?
   updatedAt            DateTime                      @updatedAt
@@ -27,10 +32,45 @@ model User {
   handledCorrections   AttendanceCorrectionRequest[] @relation("TeacherCorrections")
   resolvedCorrections  AttendanceCorrectionRequest[] @relation("CorrectionResolver")
   sessionEnrollments   SessionEnrollment[]
+  authTokens           AuthToken[]
+  authThrottles        AuthThrottle[]
   promotion            Promotion?                    @relation(fields: [promotionId], references: [id])
 
   @@index([role])
   @@index([status])
+}
+
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, expiresAt])
+  @@index([type, expiresAt])
+  @@index([expiresAt])
+}
+
+model AuthThrottle {
+  id              String             @id @default(cuid())
+  userId          String?
+  action          AuthThrottleAction
+  keyHash         String
+  attempts        Int                @default(0)
+  windowStartedAt DateTime           @default(now())
+  blockedUntil    DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  user            User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([action, keyHash])
+  @@index([action, blockedUntil])
+  @@index([updatedAt])
+  @@index([userId])
 }
 
 model Course {
@@ -213,4 +253,14 @@ enum AttendanceSource {
   QR
   STUDENT_CODE
   MANUAL
+}
+
+enum AuthTokenType {
+  INVITATION
+  PASSWORD_RESET
+}
+
+enum AuthThrottleAction {
+  LOGIN
+  RECOVERY
 }

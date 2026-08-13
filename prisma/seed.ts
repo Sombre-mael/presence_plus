@@ -62,6 +62,9 @@ async function main() {
       status: user.status,
       matricule: user.matricule,
       passwordHash,
+      activatedAt: now,
+      mustChangePassword: false,
+      passwordChangedAt: now,
     };
     await prisma.user.upsert({
       where: { id: user.id },

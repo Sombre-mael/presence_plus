@@ -1,10 +1,11 @@
 import { Pool, type PoolClient } from "pg";
+import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { E2E_DATABASE_MARKER, getE2EEnvironment } from "./environment";
 
 type Queryable = Pick<Pool | PoolClient, "query">;
-const DEMO_PROFILE_SNAPSHOT = ".e2e-demo-profiles.sha256";
+const DEMO_PROFILE_SNAPSHOT = ".e2e-demo-profiles.json";
 
 export function createE2EPool() {
   return new Pool({
@@ -109,6 +110,59 @@ export async function assertFixedDemoProfilesUnchanged(database: Queryable) {
   ]);
   if (expected.trim() !== current) {
     throw new Error("Un profil fixe u1, u2 ou u4 a été modifié pendant les E2E.");
+  }
+}
+
+interface AuthProfileSnapshot {
+  id: string;
+  passwordHash: string;
+  activatedAt: string | null;
+  mustChangePassword: boolean;
+  passwordChangedAt: string | null;
+  lastLoginAt: string | null;
+  sessionVersion: number;
+}
+
+interface AuthRunSnapshot {
+  startedAt: string;
+  profiles: AuthProfileSnapshot[];
+}
+
+async function fixedAuthProfiles(database: Queryable) {
+  const result = await database.query<AuthProfileSnapshot>(
+    `SELECT id, "passwordHash", "activatedAt", "mustChangePassword", "passwordChangedAt", "lastLoginAt", "sessionVersion"
+     FROM "User" WHERE id = ANY($1::text[]) ORDER BY id`,
+    [["u1", "u2", "u4"]],
+  );
+  if (result.rowCount !== 3) throw new Error("Les trois profils fixes sont requis.");
+  return result.rows;
+}
+
+export async function prepareFixedAuthProfiles(database: Queryable) {
+  const snapshot: AuthRunSnapshot = { startedAt: new Date().toISOString(), profiles: await fixedAuthProfiles(database) };
+  await writeFile(DEMO_PROFILE_SNAPSHOT, JSON.stringify(snapshot), "utf8");
+  const passwordHash = await bcrypt.hash(getE2EEnvironment().authPassword, 12);
+  await database.query(
+    `UPDATE "User" SET "passwordHash" = $1, "activatedAt" = CURRENT_TIMESTAMP, "mustChangePassword" = false, "passwordChangedAt" = CURRENT_TIMESTAMP, "sessionVersion" = "sessionVersion" + 1 WHERE id = ANY($2::text[])`,
+    [passwordHash, ["u1", "u2", "u4"]],
+  );
+}
+
+export async function restoreFixedAuthProfiles(database: Queryable) {
+  const raw = await readFile(DEMO_PROFILE_SNAPSHOT, "utf8").catch(() => null);
+  if (!raw) return;
+  const snapshot = JSON.parse(raw) as AuthRunSnapshot;
+  await database.query(`DELETE FROM "AuthThrottle" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
+  await database.query(`DELETE FROM "AuthToken" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
+  await database.query(
+    `DELETE FROM "AuditLog" WHERE "createdAt" >= $1 AND action = ANY($2::text[])`,
+    [snapshot.startedAt, ["LOGIN_SUCCESS", "LOGOUT", "REQUEST_PASSWORD_RESET", "ACTIVATE_ACCOUNT", "RESET_PASSWORD", "CHANGE_PASSWORD", "REVOKE_OTHER_SESSIONS", "RESEND_INVITATION", "SEND_PASSWORD_RESET", "REVOKE_USER_SESSIONS"]],
+  );
+  for (const user of snapshot.profiles) {
+    await database.query(
+      `UPDATE "User" SET "passwordHash" = $1, "activatedAt" = $2, "mustChangePassword" = $3, "passwordChangedAt" = $4, "lastLoginAt" = $5, "sessionVersion" = $6 WHERE id = $7`,
+      [user.passwordHash, user.activatedAt, user.mustChangePassword, user.passwordChangedAt, user.lastLoginAt, user.sessionVersion, user.id],
+    );
   }
 }
 
