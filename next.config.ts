@@ -13,9 +13,16 @@ const localNetworkOrigins = Object.values(networkInterfaces())
   .map((network) => network.address);
 
 if (process.env.VERCEL_ENV === "production") {
-  const requiredAuthVariables = ["AUTH_SECRET", "NEXTAUTH_URL", "RESEND_API_KEY", "AUTH_EMAIL_FROM", "AUTH_EMAIL_MODE"];
-  const missing = requiredAuthVariables.filter((name) => !process.env[name]?.trim());
-  if (missing.length) throw new Error(`Configuration Auth de production incomplète : ${missing.join(", ")}`);
+  const requiredProductionVariables = [
+    "DATABASE_URL",
+    "AUTH_SECRET",
+    "NEXTAUTH_URL",
+    "RESEND_API_KEY",
+    "AUTH_EMAIL_FROM",
+    "AUTH_EMAIL_MODE",
+  ];
+  const missing = requiredProductionVariables.filter((name) => !process.env[name]?.trim());
+  if (missing.length) throw new Error(`Configuration de production incomplète : ${missing.join(", ")}`);
   if (process.env.AUTH_EMAIL_MODE !== "live") throw new Error("AUTH_EMAIL_MODE=live est obligatoire en production.");
   if (!process.env.NEXTAUTH_URL?.startsWith("https://")) throw new Error("NEXTAUTH_URL doit utiliser HTTPS en production.");
   if (process.env.AUTH_EMAIL_FROM?.includes("example.com")) throw new Error("AUTH_EMAIL_FROM doit utiliser un domaine d’envoi vérifié.");

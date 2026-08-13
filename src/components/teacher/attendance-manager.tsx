@@ -46,17 +46,14 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
     .filter((request) => request.sessionId === sessionId && request.status === "PENDING")
     .sort((a, b) => Number(b.id === highlightedRequestId) - Number(a.id === highlightedRequestId));
 
-  function exportCsv() {
-    const params = new URLSearchParams({ sessionId, status, query });
-    window.location.assign(`/api/exports?${params}`);
-  }
+  const exportParams = new URLSearchParams({ sessionId, status, query });
 
   return (
     <div>
       <PageHeader
         title="Présences de la session"
         description={`${session.courseName} · ${session.date} · ${roster.length} étudiant(s) inscrit(s)`}
-        action={<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={exportCsv}><Download /> Exporter le résultat</Button>{canEdit && <AttendanceDialog sessionId={sessionId} />}</div>}
+        action={<div className="flex flex-wrap gap-2"><Button asChild variant="outline"><a href={`/api/exports?${exportParams}`}><Download /> Exporter le résultat</a></Button>{canEdit && <AttendanceDialog sessionId={sessionId} />}</div>}
       />
 
       {pendingRequests.length > 0 && (
