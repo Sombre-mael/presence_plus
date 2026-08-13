@@ -18,7 +18,10 @@
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "auth:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "auth:issue-recovery": "tsx scripts/issue-recovery-code.ts",
+    "auth:cleanup": "tsx scripts/auth-cleanup.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.8.0",
@@ -42,6 +45,7 @@
     "react-dom": "19.2.4",
     "recharts": "^3.10.0",
     "resend": "^6.19.0",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },

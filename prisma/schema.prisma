@@ -11,7 +11,7 @@ model User {
   id                   String                        @id @default(cuid())
   matricule            String?                       @unique
   name                 String
-  email                String                        @unique
+  email                String?                       @unique
   passwordHash         String
   role                 Role
   status               UserStatus
@@ -34,6 +34,7 @@ model User {
   sessionEnrollments   SessionEnrollment[]
   authTokens           AuthToken[]
   authThrottles        AuthThrottle[]
+  authSessions         AuthSession[]
   promotion            Promotion?                    @relation(fields: [promotionId], references: [id])
 
   @@index([role])
@@ -41,17 +42,38 @@ model User {
 }
 
 model AuthToken {
-  id        String        @id @default(cuid())
-  userId    String
-  type      AuthTokenType
-  tokenHash String        @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime      @default(now())
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String             @id @default(cuid())
+  userId              String
+  type                AuthTokenType
+  tokenHash           String             @unique
+  codeHash            String?            @unique
+  deliveryStatus      AuthDeliveryStatus @default(NOT_APPLICABLE)
+  providerMessageId   String?
+  deliveryAttemptedAt DateTime?
+  expiresAt           DateTime
+  usedAt              DateTime?
+  createdAt           DateTime           @default(now())
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type, expiresAt])
   @@index([type, expiresAt])
+  @@index([expiresAt])
+}
+
+model AuthSession {
+  id            String    @id @default(cuid())
+  userId        String
+  userAgent     String?
+  ipHash        String
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([userId, revokedAt])
   @@index([expiresAt])
 }
 
@@ -260,7 +282,15 @@ enum AuthTokenType {
   PASSWORD_RESET
 }
 
+enum AuthDeliveryStatus {
+  NOT_APPLICABLE
+  SIMULATED
+  ACCEPTED
+  FAILED
+}
+
 enum AuthThrottleAction {
   LOGIN
   RECOVERY
+  TOKEN_VERIFY
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { getE2EEnvironment } from "./environment";
-import { cleanupAuthUserFixture, createAuthTokenFixture, createAuthUserFixture, loginAs } from "./helpers";
+import { cleanupAuthUserFixture, createAuthCodeFixture, createAuthTokenFixture, createAuthUserFixture, createStudentWithoutEmailFixture, loginAs } from "./helpers";
 
 test("un accès anonyme est redirigé vers la connexion", async ({ page }) => {
   await page.goto("/admin/dashboard");
@@ -76,8 +76,8 @@ test("Sarah peut utiliser son matricule et les erreurs restent génériques", as
 test("la récupération ne révèle pas l'existence d'un compte", async ({ page }) => {
   await page.goto("/forgot-password");
   await page.getByLabel("E-mail ou matricule").fill("inconnu@presence.plus");
-  await page.getByRole("button", { name: "Recevoir un lien" }).click();
-  await expect(page.getByText("Si un compte actif correspond à cet identifiant")).toBeVisible();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await expect(page.getByText("Si un moyen de récupération est disponible")).toBeVisible();
 });
 
 test("la déconnexion invalide la navigation arrière", async ({ page }) => {
@@ -128,7 +128,7 @@ test("une invitation est à usage unique et active le compte", async ({ page }) 
     await page.getByRole("button", { name: "Activer mon compte" }).click();
     await expect(page).toHaveURL(/\/login\?notice=activated/, { timeout: 60_000 });
     await page.goto(`/activate-account?token=${encodeURIComponent(token)}`);
-    await expect(page.getByText("invalide, expiré ou déjà utilisé")).toBeVisible();
+    await expect(page.getByLabel("Code à usage unique")).toBeVisible();
   } finally {
     await cleanupAuthUserFixture(user.id);
   }
@@ -139,9 +139,60 @@ test("un jeton de réinitialisation expiré est refusé", async ({ page }) => {
   const token = await createAuthTokenFixture(user.id, "PASSWORD_RESET", true);
   try {
     await page.goto(`/reset-password?token=${encodeURIComponent(token)}`);
-    await expect(page.getByText("invalide, expiré ou déjà utilisé")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Enregistrer le mot de passe" })).toHaveCount(0);
+    await expect(page.getByLabel("Code à usage unique")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Enregistrer le mot de passe" })).toBeVisible();
   } finally {
+    await cleanupAuthUserFixture(user.id);
+  }
+});
+
+test("un étudiant sans e-mail active son compte avec son matricule et un code", async ({ page }) => {
+  const user = await createStudentWithoutEmailFixture();
+  const code = await createAuthCodeFixture(user.id, "INVITATION");
+  const password = "Silex!Boussole8-Lumiere-Mangue";
+  try {
+    await page.goto("/activate-account");
+    await page.getByLabel("E-mail ou matricule").fill(user.matricule);
+    await page.getByLabel("Code à usage unique").fill(code);
+    await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);
+    await page.getByLabel("Confirmer le nouveau mot de passe", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Activer mon compte" }).click();
+    await expect(page).toHaveURL(/\/login\?notice=activated/, { timeout: 60_000 });
+    await page.getByLabel("E-mail ou matricule").fill(user.matricule);
+    await page.getByLabel("Mot de passe", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/student\/dashboard/);
+  } finally {
+    await cleanupAuthUserFixture(user.id);
+  }
+});
+
+test("un utilisateur voit ses appareils et révoque une autre session", async ({ browser }) => {
+  const user = await createAuthUserFixture();
+  const firstContext = await browser.newContext();
+  const secondContext = await browser.newContext();
+  const first = await firstContext.newPage();
+  const second = await secondContext.newPage();
+  async function login(page: typeof first) {
+    await page.goto("/login");
+    await page.getByLabel("E-mail ou matricule").fill(user.email);
+    await page.getByLabel("Mot de passe", { exact: true }).fill(user.password);
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/admin\/dashboard/);
+  }
+  try {
+    await login(first);
+    await login(second);
+    await first.goto("/account/security");
+    await expect(first.getByText("Appareils connectés")).toBeVisible();
+    await first.locator("#sessions-current-password").fill(user.password);
+    await first.getByRole("button", { name: "Révoquer", exact: true }).first().click();
+    await expect(first.getByText("La session a été révoquée.")).toBeVisible();
+    await second.goto("/admin/dashboard");
+    await expect(second).toHaveURL(/\/login/);
+  } finally {
+    await firstContext.close();
+    await secondContext.close();
     await cleanupAuthUserFixture(user.id);
   }
 });

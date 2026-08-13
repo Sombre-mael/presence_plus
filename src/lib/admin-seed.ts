@@ -115,7 +115,7 @@ export const initialAdminData: AdminDataState = {
           checkedInAt: isPresent ? session.startTime : undefined,
           status: isPresent ? "PRESENT" as const : "ABSENT" as const,
           source: "QR" as const,
-          note: index === 0 ? "Donnée de démonstration." : undefined,
+          note: index === 0 ? "Donnée initiale." : undefined,
         };
       });
     }),

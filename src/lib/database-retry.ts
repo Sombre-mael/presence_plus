@@ -9,7 +9,7 @@ function isTransientDatabaseError(error: unknown) {
 
     if (
       ["ENOTFOUND", "EAI_AGAIN", "ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"].includes(code)
-      || /can't reach database|connection terminated|connection timeout|server closed the connection/i.test(message)
+      || /can't reach database|connection terminated|connection timeout|server closed the connection|unable to start a transaction/i.test(message)
     ) {
       return true;
     }
@@ -33,5 +33,23 @@ export async function withDatabaseRetry<T>(operation: () => Promise<T>, attempts
     }
   }
 
+  throw lastError;
+}
+
+function isSerializationConflict(error: unknown) {
+  return Boolean(error && typeof error === "object" && "code" in error && String(error.code) === "P2034");
+}
+
+export async function withSerializableRetry<T>(operation: () => Promise<T>, attempts = 3) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if ((!isSerializationConflict(error) && !isTransientDatabaseError(error)) || attempt === attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+    }
+  }
   throw lastError;
 }

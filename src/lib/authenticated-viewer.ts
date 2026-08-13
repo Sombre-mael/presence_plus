@@ -3,18 +3,21 @@ import "server-only";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { validateAuthSession } from "@/lib/auth-session.server";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import type { Role, UserSummary } from "@/types";
 
 export type AuthenticatedViewer = UserSummary & {
   promotionId?: string;
   sessionVersion: number;
   mustChangePassword: boolean;
+  authSessionId: string;
 };
 
 export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | null> {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return null;
-  const user = await prisma.user.findUnique({
+  if (!session?.user?.id || !session.user.authSessionId) return null;
+  const [user, validAuthSession] = await withDatabaseRetry(() => Promise.all([prisma.user.findUnique({
     where: { id: session.user.id },
     select: {
       id: true,
@@ -28,18 +31,19 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
       mustChangePassword: true,
       sessionVersion: true,
     },
-  });
-  if (!user || user.status !== "ACTIVE" || !user.activatedAt || user.sessionVersion !== session.user.sessionVersion) return null;
+  }), validateAuthSession(session.user.authSessionId, session.user.id)]));
+  if (!validAuthSession || !user || user.status !== "ACTIVE" || !user.activatedAt || user.sessionVersion !== session.user.sessionVersion) return null;
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
+    ...(user.email ? { email: user.email } : {}),
     role: user.role,
     status: user.status,
     promotion: user.promotion?.name,
     promotionId: user.promotionId ?? undefined,
     sessionVersion: user.sessionVersion,
     mustChangePassword: user.mustChangePassword,
+    authSessionId: session.user.authSessionId,
   };
 }
 

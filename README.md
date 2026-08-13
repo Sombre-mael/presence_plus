@@ -119,19 +119,13 @@ Presence Plus applique plusieurs règles afin de protéger la cohérence des don
 - les changements importants sont inscrits dans le journal d'activité ;
 - les dates métier sont interprétées dans le fuseau `Africa/Lubumbashi`.
 
-## État du projet
+## Exploitation et accès
 
-Presence Plus est actuellement en phase de développement et de stabilisation.
+Les parcours administrateur, enseignant et étudiant utilisent Prisma et Neon comme source de vérité. L'accès est assuré par Auth.js avec des sessions de huit heures, un contrôle du rôle côté serveur et un registre Neon permettant de révoquer les appareils connectés.
 
-Les parcours administrateur, enseignant et étudiant utilisent Prisma et Neon comme source de vérité. L'authentification définitive avec Auth.js n'est pas encore activée : trois profils de démonstration signés côté serveur permettent temporairement de parcourir l'application.
+Il n'existe pas d'inscription publique. Le premier administrateur est créé par une commande contrôlée, puis l'administration invite les enseignants et étudiants. L'activation peut utiliser un lien envoyé par e-mail ou un code à usage unique remis directement à l'utilisateur. L'e-mail reste facultatif pour un étudiant disposant d'un matricule.
 
-| Profil de démonstration | Rôle |
-| --- | --- |
-| Aline Kabeya | Administration |
-| Patrick Ilunga | Enseignant |
-| Sarah Mbuyi | Étudiante |
-
-Ce mode facilite les tests fonctionnels, mais ne constitue pas un mécanisme d'authentification destiné à la production.
+Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un secret Auth dédié, d'une base Neon migrée et d'un domaine d'envoi Resend vérifié. Le mode d'e-mail simulé est automatiquement refusé sur Vercel en production.
 
 ## Technologies principales
 
@@ -139,6 +133,7 @@ Ce mode facilite les tests fonctionnels, mais ne constitue pas un mécanisme d'a
 - **TypeScript** pour les contrats et la logique applicative ;
 - **Prisma 7** pour l'accès aux données ;
 - **Neon PostgreSQL** comme base de données ;
+- **Auth.js** et bcrypt pour les connexions et mots de passe ;
 - **Tailwind CSS 4** et composants UI réutilisables pour l'interface ;
 - **Motion** pour les transitions et micro-interactions ;
 - **Zod** pour la validation ;
@@ -164,9 +159,10 @@ Créer un fichier `.env` à partir de `.env.example`, puis renseigner au minimum
 ```env
 DATABASE_URL="postgresql://..."
 AUTH_SECRET="..."
+NEXTAUTH_URL="http://localhost:3000"
 ```
 
-`AUTH_SECRET` est utilisé pour signer le profil de démonstration et les codes QR. Il peut être généré avec :
+`AUTH_SECRET` chiffre les sessions Auth.js et protège les empreintes sensibles. Il peut être généré avec :
 
 ```bash
 pnpm exec auth secret
@@ -177,13 +173,39 @@ Préparer Prisma et démarrer l'application :
 ```bash
 pnpm exec prisma generate
 pnpm db:migrate:deploy
-pnpm db:seed
 pnpm dev
+```
+
+Pour une nouvelle installation sans administrateur, créer le premier compte sans mot de passe temporaire :
+
+```bash
+pnpm auth:bootstrap-admin -- --name "Nom Administrateur" --email "admin@etablissement.cd"
+```
+
+La commande affiche une seule fois un code d'activation valable 48 heures et refuse toute exécution dès qu'un administrateur existe.
+
+Si un administrateur existant ne peut plus accéder à son compte et que l'e-mail transactionnel n'est pas encore disponible, un opérateur ayant accès aux secrets d'exploitation peut émettre un code de récupération auditée valable 30 minutes :
+
+```bash
+pnpm auth:issue-recovery -- --identifier "admin@etablissement.cd"
+```
+
+Cette commande invalide les anciens codes de récupération du compte et ne définit jamais de mot de passe temporaire.
+
+Le jeu de données initial est réservé à une base locale jetable. Il exige un accord explicite et ne remplace jamais le mot de passe d'un compte existant :
+
+```env
+ALLOW_DEMO_SEED=true
+SEED_PASSWORD="un-mot-de-passe-de-test-robuste"
+```
+
+```bash
+pnpm db:seed
 ```
 
 L'application est ensuite disponible sur [http://localhost:3000](http://localhost:3000).
 
-> Ne lancez pas automatiquement le seed sur une base Neon partagée contenant déjà des données de travail.
+> Le seed refuse de s'exécuter en production. Ne l'utilisez jamais sur une base Neon partagée contenant des données réelles.
 
 ## Vérifier le projet
 
@@ -213,9 +235,8 @@ e2e/              Parcours Playwright
 
 ## Prochaines étapes
 
-- terminer le jalon de stabilisation transversal ;
-- intégrer Auth.js et les sessions utilisateur réelles ;
-- renforcer les tests de concurrence et de résilience ;
+- valider le socle Auth sur la branche Neon E2E puis appliquer sa migration en production ;
+- configurer le domaine d'envoi Resend et le suivi des livraisons ;
 - préparer les environnements de préproduction et de production ;
 - déployer l'application sur Vercel.
 

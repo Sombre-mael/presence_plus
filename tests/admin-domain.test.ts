@@ -56,6 +56,24 @@ describe("règles métier administrateur", () => {
     expect(result.fieldErrors?.code).toBeDefined();
   });
 
+  it("autorise un étudiant sans e-mail mais l’exige pour le personnel", () => {
+    const student = validateUser(freshAdminData(), {
+      name: "Étudiant sans e-mail",
+      role: "STUDENT",
+      status: "ACTIVE",
+      matricule: "INF26-099",
+      promotionId: "p2",
+    });
+    const teacher = validateUser(freshAdminData(), {
+      name: "Enseignant sans e-mail",
+      role: "TEACHER",
+      status: "ACTIVE",
+    });
+
+    expect(student.ok).toBe(true);
+    expect(teacher.fieldErrors?.email).toBeDefined();
+  });
+
   it("aligne l’unicité des promotions sur la contrainte Neon", () => {
     const result = validatePromotion(freshAdminData(), {
       name: "L2 Informatique",

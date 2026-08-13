@@ -1,6 +1,7 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { prisma } from "../src/lib/prisma";
+import { disconnectPrisma, prisma } from "../scripts/prisma";
+import { evaluatePassword } from "../src/lib/password-policy";
 import {
   AttendanceSource,
   AttendanceStatus,
@@ -9,7 +10,17 @@ import {
   UserStatus,
 } from "../src/generated/prisma/enums";
 
-const demoPassword = process.env.SEED_PASSWORD ?? "PresencePlus2026!";
+if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+  throw new Error("Le seed de démonstration est interdit en production.");
+}
+if (process.env.ALLOW_DEMO_SEED !== "true") {
+  throw new Error("Définissez ALLOW_DEMO_SEED=true pour confirmer le chargement des données de démonstration.");
+}
+const configuredSeedPassword = process.env.SEED_PASSWORD?.trim();
+if (!configuredSeedPassword || !evaluatePassword(configuredSeedPassword).valid) {
+  throw new Error("SEED_PASSWORD doit être défini et respecter la politique de mot de passe.");
+}
+const demoPassword: string = configuredSeedPassword;
 const now = new Date();
 
 function minutesFrom(date: Date, minutes: number) {
@@ -55,28 +66,28 @@ async function main() {
   ];
 
   for (const user of users) {
-    const common = {
+    const profile = {
       name: user.name,
       email: user.email,
       role: user.role,
       status: user.status,
       matricule: user.matricule,
-      passwordHash,
-      activatedAt: now,
-      mustChangePassword: false,
-      passwordChangedAt: now,
     };
     await prisma.user.upsert({
       where: { id: user.id },
       update: {
-        ...common,
+        ...profile,
         promotion: user.promotionId
           ? { connect: { id: user.promotionId } }
           : { disconnect: true },
       },
       create: {
         id: user.id,
-        ...common,
+        ...profile,
+        passwordHash,
+        activatedAt: now,
+        mustChangePassword: false,
+        passwordChangedAt: now,
         ...(user.promotionId
           ? { promotion: { connect: { id: user.promotionId } } }
           : {}),
@@ -235,6 +246,4 @@ main()
     console.error(error);
     process.exitCode = 1;
   })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .finally(disconnectPrisma);

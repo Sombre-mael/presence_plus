@@ -18,12 +18,12 @@ export default function DashboardError({ error, reset }: { error: Error & { dige
         </span>
         <h1 className="mt-5 text-xl font-semibold">Impossible d’afficher cet espace</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Une erreur de chargement ou de configuration a interrompu cette page. Les opérations déjà confirmées par Neon restent enregistrées.
+          Une erreur de chargement a interrompu cette page. Les informations déjà enregistrées sont conservées.
         </p>
         {error.digest && <p className="mt-3 font-mono text-xs text-muted-foreground">Référence {error.digest}</p>}
         <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
           <Button onClick={reset}><RotateCcw />Réessayer</Button>
-          <Button asChild variant="outline"><Link href="/login"><LogIn />Changer de profil</Link></Button>
+          <Button asChild variant="outline"><Link href="/login"><LogIn />Se reconnecter</Link></Button>
         </div>
       </section>
     </main>
