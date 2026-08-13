@@ -160,6 +160,7 @@ Créer un fichier `.env` à partir de `.env.example`, puis renseigner au minimum
 DATABASE_URL="postgresql://..."
 AUTH_SECRET="..."
 NEXTAUTH_URL="http://localhost:3000"
+AUTH_EMAIL_MODE="manual"
 ```
 
 `AUTH_SECRET` chiffre les sessions Auth.js et protège les empreintes sensibles. Il peut être généré avec :
@@ -167,6 +168,8 @@ NEXTAUTH_URL="http://localhost:3000"
 ```bash
 pnpm exec auth secret
 ```
+
+En mode `manual`, les codes d'activation et de récupération sont remis directement par l'administration. Lorsqu'un domaine d'envoi vérifié sera disponible, renseigner `RESEND_API_KEY` et `AUTH_EMAIL_FROM`, puis passer `AUTH_EMAIL_MODE` à `live`.
 
 Préparer Prisma et démarrer l'application :
 
@@ -233,12 +236,9 @@ tests/            Tests unitaires et métier
 e2e/              Parcours Playwright
 ```
 
-## Prochaines étapes
+## Déploiement
 
-- valider le socle Auth sur la branche Neon E2E puis appliquer sa migration en production ;
-- configurer le domaine d'envoi Resend et le suivi des livraisons ;
-- préparer les environnements de préproduction et de production ;
-- déployer l'application sur Vercel.
+Le déploiement de production utilise Vercel pour l'application et Neon pour PostgreSQL. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
 
 ## Licence
 

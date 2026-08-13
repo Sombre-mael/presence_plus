@@ -79,6 +79,10 @@ export async function sendAuthEmail(
     return { sent: false, simulated: false, status: "NOT_APPLICABLE", message: "Aucun e-mail n’est associé à ce compte." };
   }
 
+  if (process.env.AUTH_EMAIL_MODE === "manual") {
+    return { sent: false, simulated: true, status: "SIMULATED", message: "Le code doit être remis directement à l’utilisateur." };
+  }
+
   if (process.env.AUTH_EMAIL_MODE === "mock" || (process.env.NODE_ENV !== "production" && !authEmailConfigurationReady())) {
     if (process.env.NODE_ENV !== "test") console.info(`[auth-email:mock] ${type} destiné à ${recipient.email}`);
     return { sent: true, simulated: true, status: "SIMULATED", message: "E-mail simulé en environnement local." };

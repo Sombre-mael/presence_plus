@@ -20,7 +20,7 @@ import type { AuthAccessCredential, AuthActionResult as AuthResult, AuthSessionS
 
 export type AuthActionResult<T = undefined> = AuthResult<T>;
 
-const GENERIC_RECOVERY_MESSAGE = "Si un moyen de récupération est disponible pour ce compte, les instructions ont été préparées. Sans e-mail, contactez l’administration.";
+const GENERIC_RECOVERY_MESSAGE = "Si un moyen de récupération est disponible pour ce compte, les instructions ont été préparées. Si rien ne vous parvient, contactez l’administration.";
 
 function passwordValidation(password: string, confirmation: string, identity: string[]): AuthActionResult | null {
   if (password !== confirmation) {
