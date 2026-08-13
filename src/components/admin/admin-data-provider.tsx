@@ -30,6 +30,7 @@ import {
   validateStudentCodeAction,
   type AcademicActionResult,
 } from "@/actions/academic.actions";
+import { resendInvitationAction, revokeUserSessionsAction, sendPasswordResetAction } from "@/actions/auth.actions";
 import { getAdminAnomalies, getAdminDashboardStats } from "@/lib/admin-domain";
 import type {
   AcademicDataState,
@@ -70,6 +71,9 @@ export interface AcademicDataContextValue {
   updateUser: (id: string, input: AdminUserInput) => AsyncResult;
   deleteUser: (id: string) => AsyncResult;
   setUserStatus: (id: string, status: "ACTIVE" | "INACTIVE") => AsyncResult;
+  resendInvitation: (id: string) => AsyncResult;
+  sendPasswordReset: (id: string) => AsyncResult;
+  revokeUserSessions: (id: string) => AsyncResult;
   createPromotion: (input: AdminPromotionInput) => AsyncResult;
   updatePromotion: (id: string, input: AdminPromotionInput) => AsyncResult;
   deletePromotion: (id: string) => AsyncResult;
@@ -236,6 +240,28 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
   const updateUser = useCallback((id: string, input: AdminUserInput) => run(updateUserAction(id, input), `user:${id}:update`), [run]);
   const deleteUser = useCallback((id: string) => run(deleteUserAction(id), `user:${id}:delete`), [run]);
   const setUserStatus = useCallback((id: string, status: "ACTIVE" | "INACTIVE") => run(setUserStatusAction(id, status), `user:${id}:status`), [run]);
+  const runAuth = useCallback(async (request: Promise<MutationResult>, key: string) => {
+    setPendingCount((count) => count + 1);
+    setPendingKeys((current) => [...current, key]);
+    try {
+      const result = await request;
+      if (result.ok) {
+        notify(result.message);
+        await reload();
+      } else notifyError(result.message);
+      return result;
+    } catch {
+      const result = { ok: false, message: "L’opération de sécurité n’a pas pu être confirmée." };
+      notifyError(result.message);
+      return result;
+    } finally {
+      setPendingCount((count) => Math.max(0, count - 1));
+      setPendingKeys((current) => current.filter((item) => item !== key));
+    }
+  }, [notify, notifyError, reload]);
+  const resendInvitation = useCallback((id: string) => runAuth(resendInvitationAction(id), `user:${id}:invite`), [runAuth]);
+  const sendPasswordReset = useCallback((id: string) => runAuth(sendPasswordResetAction(id), `user:${id}:reset-password`), [runAuth]);
+  const revokeUserSessions = useCallback((id: string) => runAuth(revokeUserSessionsAction(id), `user:${id}:revoke`), [runAuth]);
   const createPromotion = useCallback((input: AdminPromotionInput) => run(createPromotionAction(input), "promotion:create"), [run]);
   const updatePromotion = useCallback((id: string, input: AdminPromotionInput) => run(updatePromotionAction(id, input), `promotion:${id}:update`), [run]);
   const deletePromotion = useCallback((id: string) => run(deletePromotionAction(id), `promotion:${id}:delete`), [run]);
@@ -307,6 +333,9 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     updateUser,
     deleteUser,
     setUserStatus,
+    resendInvitation,
+    sendPasswordReset,
+    revokeUserSessions,
     createPromotion,
     updatePromotion,
     deletePromotion,
@@ -329,7 +358,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     notify,
     syncStatus,
     lastSyncedAt,
-  }), [state, viewerId, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
+  }), [state, viewerId, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
 
   return (
     <AcademicDataContext.Provider value={value}>

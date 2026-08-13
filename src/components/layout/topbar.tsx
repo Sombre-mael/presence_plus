@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { useTransition } from "react";
-import { AlertTriangle, Bell, ChevronDown, LogOut, RotateCcw } from "lucide-react";
+import { AlertTriangle, Bell, ChevronDown, KeyRound, LogOut, RotateCcw } from "lucide-react";
 import type { Role, UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
-import { clearDemoViewerAction } from "@/actions/demo-session.actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,15 +51,14 @@ export function Topbar({
   user,
   role,
   anomalies = [],
-  onResetDemo,
+  onReloadData,
 }: {
   user: UserSummary;
   role: Role;
   anomalies?: AdminAnomaly[];
-  onResetDemo?: () => void;
+  onReloadData?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [leaving, startLeaving] = useTransition();
   const breadcrumb = getBreadcrumb(pathname);
   const notificationHref = role === "ADMIN"
@@ -143,22 +142,23 @@ export function Topbar({
               <span className="block truncate text-xs font-normal text-muted-foreground">{user.email}</span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {onResetDemo && (
-              <DropdownMenuItem onSelect={onResetDemo}>
+            {onReloadData && (
+              <DropdownMenuItem onSelect={onReloadData}>
                 <RotateCcw />
                 Recharger depuis Neon
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem asChild>
+              <Link href="/account/security"><KeyRound />Sécurité du compte</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={leaving}
               onSelect={() => startLeaving(async () => {
-                await clearDemoViewerAction();
-                router.push("/login");
-                router.refresh();
+                await signOut({ callbackUrl: "/login?notice=signedout" });
               })}
             >
               <LogOut />
-              {leaving ? "Fermeture..." : "Changer de profil"}
+              {leaving ? "Déconnexion..." : "Se déconnecter"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

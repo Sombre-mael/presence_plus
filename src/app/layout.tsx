@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthSessionProvider } from "@/components/auth/session-provider";
 
 export const metadata: Metadata = {
   title: "Presence Plus",
@@ -15,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="fr" className="h-full font-sans">
       <body className="min-h-full">
-        <TooltipProvider>{children}</TooltipProvider>
+        <AuthSessionProvider><TooltipProvider>{children}</TooltipProvider></AuthSessionProvider>
       </body>
     </html>
   );

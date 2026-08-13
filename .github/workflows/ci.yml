@@ -12,6 +12,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://presence_plus:presence_plus@127.0.0.1:5432/presence_plus
       AUTH_SECRET: ci-only-secret-with-at-least-32-characters
+      AUTH_EMAIL_MODE: mock
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -43,6 +44,8 @@ jobs:
       DATABASE_URL_E2E: ${{ secrets.DATABASE_URL_E2E }}
       AUTH_SECRET: ${{ secrets.AUTH_SECRET_E2E }}
       AUTH_SECRET_E2E: ${{ secrets.AUTH_SECRET_E2E }}
+      AUTH_E2E_PASSWORD: ${{ secrets.AUTH_E2E_PASSWORD }}
+      AUTH_EMAIL_MODE: mock
       E2E_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4

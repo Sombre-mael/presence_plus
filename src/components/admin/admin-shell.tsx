@@ -13,7 +13,7 @@ export function AdminShell({ children, user, initialSidebarCollapsed = false }: 
       role="ADMIN"
       user={user}
       anomalies={anomalies}
-      onResetDemo={resetData}
+      onReloadData={resetData}
       initialSidebarCollapsed={initialSidebarCollapsed}
       syncStatus={syncStatus}
     >

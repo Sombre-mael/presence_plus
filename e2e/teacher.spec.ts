@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { cleanupSessionFixture, createActiveSessionFixture, e2eLabel, futureAcademicDate, selectDemoProfile } from "./helpers";
+import { cleanupSessionFixture, createActiveSessionFixture, e2eLabel, futureAcademicDate, loginAs } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
-  await selectDemoProfile(page, "Patrick Ilunga");
+  await loginAs(page, "Patrick Ilunga");
   await expect(page.getByRole("heading", { name: "Bonjour Patrick" })).toBeVisible();
 });
 

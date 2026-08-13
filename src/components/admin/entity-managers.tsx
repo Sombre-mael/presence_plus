@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Eye, GraduationCap, MoreHorizontal, Pencil, Plus, Power, Search, Trash2, UserRound } from "lucide-react";
+import { BookOpen, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, ShieldOff, Trash2, UserRound } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -307,7 +307,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { state, viewerId, deleteUser, setUserStatus, isPending } = useAdminData();
+  const { state, viewerId, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, isPending } = useAdminData();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [role, setRole] = useState(searchParams.get("role") ?? "ALL");
   const [status, setStatus] = useState(searchParams.get("status") ?? initialStatus);
@@ -342,6 +342,13 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
     setFormOpen(true);
   }
 
+  function accessState(user: AdminUser) {
+    if (user.status === "INACTIVE") return { label: "Compte inactif", className: "bg-slate-100 text-slate-700" };
+    if (!user.activatedAt) return { label: user.invitationPending ? "Invitation en attente" : "Invitation à renvoyer", className: "bg-amber-100 text-amber-800" };
+    if (user.mustChangePassword) return { label: "Mot de passe à modifier", className: "bg-sky-100 text-sky-800" };
+    return { label: "Compte activé", className: "bg-emerald-100 text-emerald-800" };
+  }
+
   return (
     <div>
       <PageHeader
@@ -373,7 +380,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
 
         <div className="hidden overflow-x-auto md:block">
           <Table>
-            <TableHeader><TableRow><TableHead>Utilisateur</TableHead><TableHead>Rôle</TableHead><TableHead>Promotion</TableHead><TableHead>Statut</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Utilisateur</TableHead><TableHead>Rôle</TableHead><TableHead>Promotion</TableHead><TableHead>Accès</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
             <TableBody>
               {filtered.map((user) => {
                 const promotion = state.promotions.find((item) => item.id === user.promotionId);
@@ -387,7 +394,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                     </TableCell>
                     <TableCell>{roleLabels[user.role]}</TableCell>
                     <TableCell>{promotion?.name ?? "—"}</TableCell>
-                    <TableCell><StatusBadge status={user.status} /></TableCell>
+                    <TableCell><Badge className={accessState(user).className}>{accessState(user).label}</Badge></TableCell>
                     <TableCell><RowActions deleteDisabled={Boolean(deleteBlockers.get(user.id)?.length)} onView={() => setSelectedId(user.id)} onEdit={() => edit(user.id)} onDelete={() => { setSelectedId(user.id); setDeleteOpen(true); }} /></TableCell>
                   </TableRow>
                 );
@@ -404,7 +411,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                 <span className="block truncate text-sm font-medium">{user.name}</span>
                 <span className="block truncate text-xs text-muted-foreground">{roleLabels[user.role]} · {user.email}</span>
               </span>
-              <StatusBadge status={user.status} />
+              <Badge className={accessState(user).className}>{accessState(user).label}</Badge>
             </button>
           ))}
         </div>
@@ -422,9 +429,15 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
               <div className="px-4">
                 <DetailLine label="E-mail">{selected.email}</DetailLine>
                 <DetailLine label="Statut"><StatusBadge status={selected.status} /></DetailLine>
+                <DetailLine label="Accès"><Badge className={accessState(selected).className}>{accessState(selected).label}</Badge></DetailLine>
+                <DetailLine label="Dernière connexion">{selected.lastLoginAt ? new Date(selected.lastLoginAt).toLocaleString("fr-FR") : "Jamais"}</DetailLine>
                 <DetailLine label="Promotion">{state.promotions.find((item) => item.id === selected.promotionId)?.name ?? "Non concerné"}</DetailLine>
                 <DetailLine label="Matricule">{selected.matricule ?? "Non concerné"}</DetailLine>
                 {selectedBlockers.length > 0 && <Alert className="mt-4"><AlertTitle>Suppression indisponible</AlertTitle><AlertDescription>{selectedBlockers.join(" ")}</AlertDescription></Alert>}
+              </div>
+              <div className="grid gap-2 px-4 pb-2">
+                {!selected.activatedAt ? <Button variant="outline" disabled={isPending(`user:${selected.id}:invite`)} onClick={() => resendInvitation(selected.id)}><Mail />Renvoyer l’invitation</Button> : <Button variant="outline" disabled={isPending(`user:${selected.id}:reset-password`)} onClick={() => sendPasswordReset(selected.id)}><KeyRound />Envoyer une réinitialisation</Button>}
+                {selected.id !== viewerId ? <Button variant="outline" disabled={isPending(`user:${selected.id}:revoke`)} onClick={() => revokeUserSessions(selected.id)}><ShieldOff />Révoquer les sessions</Button> : null}
               </div>
               <SheetFooter className="grid grid-cols-1 sm:grid-cols-3">
                 <Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button>

@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { selectDemoProfile, uniqueUserFixture } from "./helpers";
+import { loginAs, uniqueUserFixture } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
-  await selectDemoProfile(page, "Aline Kabeya");
+  await loginAs(page, "Aline Kabeya");
   await expect(page.getByRole("heading", { name: "Pilotage académique" })).toBeVisible();
   await expect(page.getByText("Restauration de l’espace")).toHaveCount(0);
 });

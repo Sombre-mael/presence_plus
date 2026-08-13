@@ -4,12 +4,14 @@ import { cookies } from "next/headers";
 import { AcademicDataProvider } from "@/components/admin/admin-data-provider";
 import { StudentShell } from "@/components/student/student-shell";
 import { getAcademicSnapshot } from "@/lib/academic-repository";
-import { getDemoViewer, roleHome } from "@/lib/demo-viewer";
+import { getAuthenticatedViewer } from "@/lib/authenticated-viewer";
+import { roleHome } from "@/lib/auth-navigation";
 
 export default async function StudentLayout({ children }: { children: ReactNode }) {
-  const viewer = await getDemoViewer();
+  const viewer = await getAuthenticatedViewer();
   if (!viewer) redirect("/login");
   if (viewer.role !== "STUDENT") redirect(roleHome(viewer.role));
+  if (viewer.mustChangePassword) redirect("/change-password");
   const collapsed = (await cookies()).get("presence-plus-student-sidebar")?.value === "collapsed";
   const initialState = await getAcademicSnapshot(viewer);
   return (

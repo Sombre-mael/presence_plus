@@ -7,7 +7,7 @@ import {
   countSessionsForViewer,
   getAttendancesForViewer,
 } from "@/lib/academic-repository";
-import { getDemoViewer } from "@/lib/demo-viewer";
+import { getBusinessViewer } from "@/lib/authenticated-viewer";
 
 const querySchema = z.object({
   sessionId: z.string().trim().min(1).max(120).optional(),
@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const viewer = await getDemoViewer();
-    if (!viewer) return Response.json({ error: "Profil de demonstration requis." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
+    const viewer = await getBusinessViewer();
+    if (!viewer) return Response.json({ error: "Authentification requise." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
     if (result.data.sessionId && await countSessionsForViewer(viewer, { id: result.data.sessionId }) === 0) {
       return Response.json({ error: "Session introuvable." }, { status: 404, headers: PRIVATE_RESPONSE_HEADERS });
     }

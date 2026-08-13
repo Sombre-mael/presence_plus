@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import type { DemoViewer } from "@/lib/demo-viewer";
+import type { AuthenticatedViewer } from "@/lib/authenticated-viewer";
 import type { AcademicDataState } from "@/types/admin";
 import type { AttendanceStatus } from "@/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -41,7 +41,7 @@ export function fromAcademicDateTime(date: string, time: string) {
   return parsed;
 }
 
-function scopes(viewer: DemoViewer) {
+function scopes(viewer: AuthenticatedViewer) {
   const isAdmin = viewer.role === "ADMIN";
   const isTeacher = viewer.role === "TEACHER";
   const promotionId = viewer.promotionId ?? "__none__";
@@ -94,8 +94,18 @@ function scopes(viewer: DemoViewer) {
   return { users, promotions, courses, sessions, attendances, corrections };
 }
 
-export async function getUsersForViewer(viewer: DemoViewer): Promise<AcademicDataState["users"]> {
-  const users = await prisma.user.findMany({ where: scopes(viewer).users, orderBy: { createdAt: "asc" } });
+export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["users"]> {
+  const users = await prisma.user.findMany({
+    where: scopes(viewer).users,
+    orderBy: { createdAt: "asc" },
+    include: {
+      authTokens: {
+        where: { type: "INVITATION", usedAt: null, expiresAt: { gt: new Date() } },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
   return users.map((user) => ({
     id: user.id,
     name: user.name,
@@ -104,12 +114,19 @@ export async function getUsersForViewer(viewer: DemoViewer): Promise<AcademicDat
     status: user.status,
     promotionId: user.promotionId ?? undefined,
     matricule: user.matricule ?? undefined,
+    ...(viewer.role === "ADMIN" ? {
+      activatedAt: user.activatedAt?.toISOString(),
+      mustChangePassword: user.mustChangePassword,
+      lastLoginAt: user.lastLoginAt?.toISOString(),
+      sessionVersion: user.sessionVersion,
+      invitationPending: user.authTokens.length > 0,
+    } : {}),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   }));
 }
 
-export async function getPromotionsForViewer(viewer: DemoViewer): Promise<AcademicDataState["promotions"]> {
+export async function getPromotionsForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["promotions"]> {
   const promotions = await prisma.promotion.findMany({ where: scopes(viewer).promotions, orderBy: { createdAt: "asc" } });
   return promotions.map((promotion) => ({
     id: promotion.id,
@@ -122,7 +139,7 @@ export async function getPromotionsForViewer(viewer: DemoViewer): Promise<Academ
   }));
 }
 
-export async function getCoursesForViewer(viewer: DemoViewer): Promise<AcademicDataState["courses"]> {
+export async function getCoursesForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["courses"]> {
   const courses = await prisma.course.findMany({ where: scopes(viewer).courses, orderBy: { createdAt: "asc" } });
   return courses.map((course) => ({
     id: course.id,
@@ -151,7 +168,7 @@ function combineWhere<T>(scope: T | undefined, where: T | undefined): T | undefi
 }
 
 export async function getSessionsForViewer(
-  viewer: DemoViewer,
+  viewer: AuthenticatedViewer,
   options: RepositoryPageOptions<Prisma.SessionWhereInput> = {},
 ): Promise<AcademicDataState["sessions"]> {
   const where = combineWhere(scopes(viewer).sessions, options.where);
@@ -206,12 +223,12 @@ export async function getSessionsForViewer(
   });
 }
 
-export async function countSessionsForViewer(viewer: DemoViewer, where?: Prisma.SessionWhereInput) {
+export async function countSessionsForViewer(viewer: AuthenticatedViewer, where?: Prisma.SessionWhereInput) {
   return prisma.session.count({ where: combineWhere(scopes(viewer).sessions, where) });
 }
 
 export async function getAttendancesForViewer(
-  viewer: DemoViewer,
+  viewer: AuthenticatedViewer,
   options: RepositoryPageOptions<Prisma.AttendanceWhereInput> = {},
 ): Promise<AcademicDataState["attendances"]> {
   const where = combineWhere(scopes(viewer).attendances, options.where);
@@ -246,11 +263,11 @@ export async function getAttendancesForViewer(
   }));
 }
 
-export async function countAttendancesForViewer(viewer: DemoViewer, where?: Prisma.AttendanceWhereInput) {
+export async function countAttendancesForViewer(viewer: AuthenticatedViewer, where?: Prisma.AttendanceWhereInput) {
   return prisma.attendance.count({ where: combineWhere(scopes(viewer).attendances, where) });
 }
 
-export async function getCorrectionsForViewer(viewer: DemoViewer): Promise<AcademicDataState["correctionRequests"]> {
+export async function getCorrectionsForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["correctionRequests"]> {
   const requests = await prisma.attendanceCorrectionRequest.findMany({
     where: scopes(viewer).corrections,
     orderBy: { createdAt: "asc" },
@@ -275,7 +292,7 @@ export async function getCorrectionsForViewer(viewer: DemoViewer): Promise<Acade
   }));
 }
 
-export async function getAuditLogsForViewer(viewer: DemoViewer): Promise<AcademicDataState["auditLogs"]> {
+export async function getAuditLogsForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["auditLogs"]> {
   if (viewer.role !== "ADMIN") return [];
   const logs = await prisma.auditLog.findMany({
     orderBy: { createdAt: "desc" },
@@ -299,7 +316,7 @@ export async function getAuditLogsForViewer(viewer: DemoViewer): Promise<Academi
 export type AcademicPatch = Partial<Omit<AcademicDataState, "version">>;
 export type AcademicCollection = keyof AcademicPatch;
 
-export async function getAcademicPatch(viewer: DemoViewer, keys: AcademicCollection[]): Promise<AcademicPatch> {
+export async function getAcademicPatch(viewer: AuthenticatedViewer, keys: AcademicCollection[]): Promise<AcademicPatch> {
   if (keys.includes("sessions")) await reconcileExpiredScheduledSessions();
   const entries = await Promise.all(keys.map(async (key) => {
     if (key === "users") return [key, await getUsersForViewer(viewer)] as const;
@@ -313,7 +330,7 @@ export async function getAcademicPatch(viewer: DemoViewer, keys: AcademicCollect
   return Object.fromEntries(entries) as AcademicPatch;
 }
 
-export async function getAcademicSnapshot(viewer: DemoViewer): Promise<AcademicDataState> {
+export async function getAcademicSnapshot(viewer: AuthenticatedViewer): Promise<AcademicDataState> {
   await reconcileExpiredScheduledSessions();
   const [users, promotions, courses, sessions, attendances, correctionRequests, auditLogs] = await Promise.all([
     getUsersForViewer(viewer),

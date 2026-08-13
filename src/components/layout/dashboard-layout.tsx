@@ -22,12 +22,12 @@ interface DashboardLayoutProps {
   role: Role;
   user: UserSummary;
   anomalies?: AdminAnomaly[];
-  onResetDemo?: () => void;
+  onReloadData?: () => void;
   initialSidebarCollapsed?: boolean;
   syncStatus?: "synced" | "syncing" | "error";
 }
 
-export function DashboardLayout({ children, role, user, anomalies = [], onResetDemo, initialSidebarCollapsed = false, syncStatus = "synced" }: DashboardLayoutProps) {
+export function DashboardLayout({ children, role, user, anomalies = [], onReloadData, initialSidebarCollapsed = false, syncStatus = "synced" }: DashboardLayoutProps) {
   const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
 
   function toggleSidebar() {
@@ -65,7 +65,7 @@ export function DashboardLayout({ children, role, user, anomalies = [], onResetD
               <Sidebar role={role} mobile syncStatus={syncStatus} />
             </SheetContent>
           </Sheet>
-          <Topbar role={role} user={user} anomalies={anomalies} onResetDemo={onResetDemo} />
+          <Topbar role={role} user={user} anomalies={anomalies} onReloadData={onReloadData} />
         </div>
 
         <main className="mx-auto w-full max-w-[1440px] p-4 sm:p-6 lg:p-8">

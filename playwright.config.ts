@@ -7,6 +7,8 @@ const environment = getE2EEnvironment();
 
 process.env.DATABASE_URL = environment.databaseUrl;
 process.env.AUTH_SECRET = environment.authSecret;
+process.env.AUTH_EMAIL_MODE = "mock";
+process.env.NEXTAUTH_URL = baseURL;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -33,6 +35,9 @@ export default defineConfig({
     env: {
       DATABASE_URL: environment.databaseUrl,
       AUTH_SECRET: environment.authSecret,
+      AUTH_EMAIL_MODE: "mock",
+      AUTH_E2E_PASSWORD: environment.authPassword,
+      NEXTAUTH_URL: baseURL,
     },
   },
 });

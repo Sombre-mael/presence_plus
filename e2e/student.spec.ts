@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { cleanupCorrectionFixture, cleanupPendingCorrectionFixtures, cleanupSessionFixture, createActiveSessionFixture, e2eLabel, latestPendingCorrectionFixture, selectDemoProfile } from "./helpers";
+import { cleanupCorrectionFixture, cleanupPendingCorrectionFixtures, cleanupSessionFixture, createActiveSessionFixture, e2eLabel, latestPendingCorrectionFixture, loginAs } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
-  await selectDemoProfile(page, "Sarah Mbuyi");
+  await loginAs(page, "Sarah Mbuyi");
   await expect(page.getByRole("heading", { name: "Bonjour Sarah" })).toBeVisible();
 });
 
@@ -21,12 +21,12 @@ test("la navigation étudiante conserve son état compact", async ({ page }) => 
 test("Sarah peut pointer avec le code tournant puis retrouver le résultat", async ({ page }) => {
   const sessionId = await createActiveSessionFixture();
   try {
-    await selectDemoProfile(page, "Patrick Ilunga");
+    await loginAs(page, "Patrick Ilunga");
     await page.goto(`/teacher/sessions/${sessionId}/qr`);
     const code = await page.locator("p.metric-number").filter({ hasText: /^[A-F0-9]{8}$/ }).textContent();
     expect(code).toBeTruthy();
 
-    await selectDemoProfile(page, "Sarah Mbuyi");
+    await loginAs(page, "Sarah Mbuyi");
     await page.goto("/student/check-in");
     await page.getByRole("tab", { name: "Code manuel" }).click();
     await page.getByLabel("Code affiché par l’enseignant").fill(code!);
@@ -79,7 +79,7 @@ test("une demande étudiante peut être acceptée par l’enseignant", async ({ 
   await expect(page.getByText("Demande de correction").last()).toBeVisible();
   const fixture = await latestPendingCorrectionFixture();
   try {
-    await selectDemoProfile(page, "Patrick Ilunga");
+    await loginAs(page, "Patrick Ilunga");
     await page.goto(`/teacher/sessions/${fixture.sessionId}/attendances`);
     await expect(page.getByRole("heading", { name: "Demandes de correction" })).toBeVisible();
     await page.getByRole("button", { name: "Examiner" }).click();
@@ -87,7 +87,7 @@ test("une demande étudiante peut être acceptée par l’enseignant", async ({ 
     await page.getByRole("button", { name: "Enregistrer la décision" }).click();
     await expect(page.getByText("Correction acceptée et appliquée.")).toBeVisible();
 
-    await selectDemoProfile(page, "Sarah Mbuyi");
+    await loginAs(page, "Sarah Mbuyi");
     await page.goto("/student/history");
     await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
     await expect(page.getByText("Acceptée")).toBeVisible();
@@ -105,7 +105,7 @@ test("une demande étudiante peut être refusée avec un motif", async ({ page }
   await page.getByRole("button", { name: "Envoyer" }).click();
   const fixture = await latestPendingCorrectionFixture();
   try {
-    await selectDemoProfile(page, "Patrick Ilunga");
+    await loginAs(page, "Patrick Ilunga");
     await page.goto(`/teacher/sessions/${fixture.sessionId}/attendances`);
     await page.getByRole("button", { name: "Examiner" }).click();
     await page.getByRole("button", { name: "Refuser" }).click();
@@ -113,7 +113,7 @@ test("une demande étudiante peut être refusée avec un motif", async ({ page }
     await page.getByRole("button", { name: "Enregistrer la décision" }).click();
     await expect(page.getByText("Demande refusée.")).toBeVisible();
 
-    await selectDemoProfile(page, "Sarah Mbuyi");
+    await loginAs(page, "Sarah Mbuyi");
     await page.goto("/student/history");
     await page.getByRole("button").filter({ hasText: "Algorithmique avancée" }).first().click();
     await expect(page.getByText("Refusée")).toBeVisible();

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { getAcademicSnapshot } from "@/lib/academic-repository";
-import { getDemoViewer } from "@/lib/demo-viewer";
+import { getBusinessViewer } from "@/lib/authenticated-viewer";
 import { prisma } from "@/lib/prisma";
 import { getSessionRoster } from "@/lib/academic-domain";
 import { addAcademicDays, currentAcademicDate } from "@/lib/academic-calendar";
@@ -33,8 +33,8 @@ async function buildExport(request: NextRequest) {
   const { sessionId, kind, status, period, promotionId, courseId } = parsed.data;
   const query = parsed.data.query.toLocaleLowerCase("fr");
 
-  const viewer = await getDemoViewer();
-  if (!viewer) return Response.json({ error: "Profil de démonstration requis." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
+  const viewer = await getBusinessViewer();
+  if (!viewer) return Response.json({ error: "Authentification requise." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
   const snapshot = await getAcademicSnapshot(viewer);
   if (sessionId && !snapshot.sessions.some((session) => session.id === sessionId)) {
     return Response.json({ error: "Session introuvable." }, { status: 404, headers: PRIVATE_RESPONSE_HEADERS });

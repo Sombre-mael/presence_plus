@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { selectDemoProfile } from "./helpers";
+import { loginAs } from "./helpers";
 
 test("responsive, mouvement réduit et reprise après panne réseau", async ({ page, context }) => {
   test.setTimeout(180_000);
@@ -7,7 +7,7 @@ test("responsive, mouvement réduit et reprise après panne réseau", async ({ p
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await selectDemoProfile(page, "Aline Kabeya");
+  await loginAs(page, "Aline Kabeya");
 
   for (const viewport of [
     { width: 390, height: 844 },
