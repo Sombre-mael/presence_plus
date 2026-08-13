@@ -30,7 +30,7 @@ import {
   validateStudentCodeAction,
   type AcademicActionResult,
 } from "@/actions/academic.actions";
-import { resendInvitationAction, revokeUserSessionsAction, sendPasswordResetAction } from "@/actions/auth.actions";
+import { resendInvitationAction, revokeUserSessionsAction, sendPasswordResetAction, type AuthActionResult } from "@/actions/auth.actions";
 import { getAdminAnomalies, getAdminDashboardStats } from "@/lib/admin-domain";
 import type {
   AcademicDataState,
@@ -40,6 +40,7 @@ import type {
   AttendanceInput,
   MutationResult,
   TeacherSessionInput,
+  UserAccessMutationValue,
 } from "@/types/admin";
 import type {
   CheckInValidationResult,
@@ -50,6 +51,7 @@ import type {
 import type { AttendanceSource } from "@/types";
 import { Button } from "@/components/ui/button";
 import { canApplySyncResponse } from "@/lib/sync-domain";
+import type { AuthAccessCredential } from "@/types/auth";
 
 const OBSOLETE_STORAGE_KEYS = [
   "presence-plus:academic-data:v3",
@@ -58,6 +60,7 @@ const OBSOLETE_STORAGE_KEYS = [
 ];
 
 type AsyncResult = Promise<MutationResult>;
+type UserAccessResult = Promise<MutationResult & { value?: UserAccessMutationValue }>;
 
 export interface AcademicDataContextValue {
   state: AcademicDataState;
@@ -67,12 +70,12 @@ export interface AcademicDataContextValue {
   isPending: (key?: string) => boolean;
   stats: ReturnType<typeof getAdminDashboardStats>;
   anomalies: ReturnType<typeof getAdminAnomalies>;
-  createUser: (input: AdminUserInput) => AsyncResult;
-  updateUser: (id: string, input: AdminUserInput) => AsyncResult;
+  createUser: (input: AdminUserInput) => UserAccessResult;
+  updateUser: (id: string, input: AdminUserInput) => UserAccessResult;
   deleteUser: (id: string) => AsyncResult;
-  setUserStatus: (id: string, status: "ACTIVE" | "INACTIVE") => AsyncResult;
-  resendInvitation: (id: string) => AsyncResult;
-  sendPasswordReset: (id: string) => AsyncResult;
+  setUserStatus: (id: string, status: "ACTIVE" | "INACTIVE") => UserAccessResult;
+  resendInvitation: (id: string) => Promise<AuthActionResult<AuthAccessCredential>>;
+  sendPasswordReset: (id: string) => Promise<AuthActionResult<AuthAccessCredential>>;
   revokeUserSessions: (id: string) => AsyncResult;
   createPromotion: (input: AdminPromotionInput) => AsyncResult;
   updatePromotion: (id: string, input: AdminPromotionInput) => AsyncResult;
@@ -240,7 +243,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
   const updateUser = useCallback((id: string, input: AdminUserInput) => run(updateUserAction(id, input), `user:${id}:update`), [run]);
   const deleteUser = useCallback((id: string) => run(deleteUserAction(id), `user:${id}:delete`), [run]);
   const setUserStatus = useCallback((id: string, status: "ACTIVE" | "INACTIVE") => run(setUserStatusAction(id, status), `user:${id}:status`), [run]);
-  const runAuth = useCallback(async (request: Promise<MutationResult>, key: string) => {
+  const runAuth = useCallback(async <T,>(request: Promise<AuthActionResult<T>>, key: string) => {
     setPendingCount((count) => count + 1);
     setPendingKeys((current) => [...current, key]);
     try {
@@ -253,7 +256,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     } catch {
       const result = { ok: false, message: "L’opération de sécurité n’a pas pu être confirmée." };
       notifyError(result.message);
-      return result;
+      return result as AuthActionResult<T>;
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
       setPendingKeys((current) => current.filter((item) => item !== key));

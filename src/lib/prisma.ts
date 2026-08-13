@@ -12,10 +12,10 @@ const globalForPrisma = globalThis as {
 
 const pool = globalForPrisma.pool ?? new Pool({
   connectionString: databaseUrl(),
-  connectionTimeoutMillis: 15_000,
+  connectionTimeoutMillis: 30_000,
   idleTimeoutMillis: 60_000,
   keepAlive: true,
-  max: 10,
+  max: 5,
   query_timeout: 30_000,
   statement_timeout: 30_000,
 });

@@ -1,11 +1,13 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { accountAccessState } from "@/lib/auth-account";
 import type { AuthenticatedViewer } from "@/lib/authenticated-viewer";
 import type { AcademicDataState } from "@/types/admin";
 import type { AttendanceStatus } from "@/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { reconcileExpiredScheduledSessions } from "@/lib/session-maintenance";
+import { withDatabaseRetry } from "@/lib/database-retry";
 
 export const ACADEMIC_TIME_ZONE = "Africa/Lubumbashi";
 
@@ -95,21 +97,24 @@ function scopes(viewer: AuthenticatedViewer) {
 }
 
 export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["users"]> {
+  const now = new Date();
   const users = await prisma.user.findMany({
     where: scopes(viewer).users,
     orderBy: { createdAt: "asc" },
     include: {
       authTokens: {
-        where: { type: "INVITATION", usedAt: null, expiresAt: { gt: new Date() } },
-        select: { id: true },
+        where: { type: "INVITATION" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, usedAt: true, expiresAt: true, deliveryStatus: true },
         take: 1,
       },
+      _count: { select: { authSessions: { where: { revokedAt: null, expiresAt: { gt: now } } } } },
     },
   });
   return users.map((user) => ({
     id: user.id,
     name: user.name,
-    email: user.email,
+    ...(user.email ? { email: user.email } : {}),
     role: user.role,
     status: user.status,
     promotionId: user.promotionId ?? undefined,
@@ -119,7 +124,11 @@ export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<Ac
       mustChangePassword: user.mustChangePassword,
       lastLoginAt: user.lastLoginAt?.toISOString(),
       sessionVersion: user.sessionVersion,
-      invitationPending: user.authTokens.length > 0,
+      invitationPending: accountAccessState({ status: user.status, activatedAt: user.activatedAt, mustChangePassword: user.mustChangePassword, invitation: user.authTokens[0], now }) === "INVITATION_PENDING",
+      accessState: accountAccessState({ status: user.status, activatedAt: user.activatedAt, mustChangePassword: user.mustChangePassword, invitation: user.authTokens[0], now }),
+      invitationExpiresAt: user.authTokens[0]?.expiresAt.toISOString(),
+      deliveryStatus: user.authTokens[0]?.deliveryStatus,
+      activeSessionCount: user._count.authSessions,
     } : {}),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
@@ -317,29 +326,33 @@ export type AcademicPatch = Partial<Omit<AcademicDataState, "version">>;
 export type AcademicCollection = keyof AcademicPatch;
 
 export async function getAcademicPatch(viewer: AuthenticatedViewer, keys: AcademicCollection[]): Promise<AcademicPatch> {
-  if (keys.includes("sessions")) await reconcileExpiredScheduledSessions();
-  const entries = await Promise.all(keys.map(async (key) => {
-    if (key === "users") return [key, await getUsersForViewer(viewer)] as const;
-    if (key === "promotions") return [key, await getPromotionsForViewer(viewer)] as const;
-    if (key === "courses") return [key, await getCoursesForViewer(viewer)] as const;
-    if (key === "sessions") return [key, await getSessionsForViewer(viewer)] as const;
-    if (key === "attendances") return [key, await getAttendancesForViewer(viewer)] as const;
-    if (key === "correctionRequests") return [key, await getCorrectionsForViewer(viewer)] as const;
-    return [key, await getAuditLogsForViewer(viewer)] as const;
-  }));
-  return Object.fromEntries(entries) as AcademicPatch;
+  return withDatabaseRetry(async () => {
+    if (keys.includes("sessions")) await reconcileExpiredScheduledSessions();
+    const entries = await Promise.all(keys.map(async (key) => {
+      if (key === "users") return [key, await getUsersForViewer(viewer)] as const;
+      if (key === "promotions") return [key, await getPromotionsForViewer(viewer)] as const;
+      if (key === "courses") return [key, await getCoursesForViewer(viewer)] as const;
+      if (key === "sessions") return [key, await getSessionsForViewer(viewer)] as const;
+      if (key === "attendances") return [key, await getAttendancesForViewer(viewer)] as const;
+      if (key === "correctionRequests") return [key, await getCorrectionsForViewer(viewer)] as const;
+      return [key, await getAuditLogsForViewer(viewer)] as const;
+    }));
+    return Object.fromEntries(entries) as AcademicPatch;
+  });
 }
 
 export async function getAcademicSnapshot(viewer: AuthenticatedViewer): Promise<AcademicDataState> {
-  await reconcileExpiredScheduledSessions();
-  const [users, promotions, courses, sessions, attendances, correctionRequests, auditLogs] = await Promise.all([
-    getUsersForViewer(viewer),
-    getPromotionsForViewer(viewer),
-    getCoursesForViewer(viewer),
-    getSessionsForViewer(viewer),
-    getAttendancesForViewer(viewer),
-    getCorrectionsForViewer(viewer),
-    getAuditLogsForViewer(viewer),
-  ]);
-  return { version: 3, users, promotions, courses, sessions, attendances, correctionRequests, auditLogs };
+  return withDatabaseRetry(async () => {
+    await reconcileExpiredScheduledSessions();
+    const [users, promotions, courses, sessions, attendances, correctionRequests, auditLogs] = await Promise.all([
+      getUsersForViewer(viewer),
+      getPromotionsForViewer(viewer),
+      getCoursesForViewer(viewer),
+      getSessionsForViewer(viewer),
+      getAttendancesForViewer(viewer),
+      getCorrectionsForViewer(viewer),
+      getAuditLogsForViewer(viewer),
+    ]);
+    return { version: 3, users, promotions, courses, sessions, attendances, correctionRequests, auditLogs };
+  });
 }

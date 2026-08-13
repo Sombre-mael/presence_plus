@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { assertE2EDatabase, createE2EPool } from "./database";
 import { e2eId, e2eLabel, getE2EEnvironment } from "./environment";
 
@@ -142,6 +142,48 @@ export async function createAuthTokenFixture(userId: string, type: "INVITATION" 
       [e2eId("auth-token"), userId, type, createHash("sha256").update(token).digest("hex"), expired],
     );
     return token;
+  } finally {
+    await pool.end();
+  }
+}
+
+export async function createAuthCodeFixture(userId: string, type: "INVITATION" | "PASSWORD_RESET", expired = false) {
+  const pool = createE2EPool();
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const raw = Array.from({ length: 10 }, () => alphabet[randomInt(alphabet.length)]).join("");
+  const code = `${raw.slice(0, 5)}-${raw.slice(5)}`;
+  const token = randomBytes(32).toString("base64url");
+  const codeHash = createHmac("sha256", getE2EEnvironment().authSecret).update(`auth-code:${raw}`).digest("hex");
+  try {
+    await assertE2EDatabase(pool);
+    await pool.query(
+      `INSERT INTO "AuthToken" (id, "userId", type, "tokenHash", "codeHash", "expiresAt", "createdAt")
+       VALUES ($1, $2, $3, $4, $5,
+         (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + CASE WHEN $6 THEN INTERVAL '-1 minute' ELSE INTERVAL '30 minutes' END,
+         CURRENT_TIMESTAMP AT TIME ZONE 'UTC')`,
+      [e2eId("auth-code"), userId, type, createHash("sha256").update(token).digest("hex"), codeHash, expired],
+    );
+    return code;
+  } finally {
+    await pool.end();
+  }
+}
+
+export async function createStudentWithoutEmailFixture() {
+  const pool = createE2EPool();
+  const id = e2eId("student-no-email");
+  const suffix = id.slice(-8).toUpperCase();
+  const matricule = `E2E-${suffix}`;
+  const password = getE2EEnvironment().authPassword;
+  const passwordHash = await bcrypt.hash(password, 12);
+  try {
+    await assertE2EDatabase(pool);
+    await pool.query(
+      `INSERT INTO "User" (id, name, email, matricule, "promotionId", "passwordHash", role, status, "activatedAt", "mustChangePassword", "sessionVersion", "createdAt", "updatedAt")
+       VALUES ($1, $2, NULL, $3, 'p2', $4, 'STUDENT', 'ACTIVE', NULL, true, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, e2eLabel(`Étudiant sans e-mail ${suffix}`), matricule, passwordHash],
+    );
+    return { id, matricule };
   } finally {
     await pool.end();
   }

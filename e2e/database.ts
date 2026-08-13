@@ -152,11 +152,12 @@ export async function restoreFixedAuthProfiles(database: Queryable) {
   const raw = await readFile(DEMO_PROFILE_SNAPSHOT, "utf8").catch(() => null);
   if (!raw) return;
   const snapshot = JSON.parse(raw) as AuthRunSnapshot;
+  await database.query(`DELETE FROM "AuthSession" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
   await database.query(`DELETE FROM "AuthThrottle" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
   await database.query(`DELETE FROM "AuthToken" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
   await database.query(
     `DELETE FROM "AuditLog" WHERE "createdAt" >= $1 AND action = ANY($2::text[])`,
-    [snapshot.startedAt, ["LOGIN_SUCCESS", "LOGOUT", "REQUEST_PASSWORD_RESET", "ACTIVATE_ACCOUNT", "RESET_PASSWORD", "CHANGE_PASSWORD", "REVOKE_OTHER_SESSIONS", "RESEND_INVITATION", "SEND_PASSWORD_RESET", "REVOKE_USER_SESSIONS"]],
+    [snapshot.startedAt, ["LOGIN_SUCCESS", "LOGOUT", "REQUEST_PASSWORD_RESET", "ACTIVATE_ACCOUNT", "RESET_PASSWORD", "CHANGE_PASSWORD", "REVOKE_SESSION", "REVOKE_OTHER_SESSIONS", "RESEND_INVITATION", "SEND_PASSWORD_RESET", "REVOKE_USER_SESSIONS", "AUTH_THROTTLE_BLOCK", "AUTH_EMAIL_NOT_APPLICABLE", "AUTH_EMAIL_SIMULATED", "AUTH_EMAIL_ACCEPTED", "AUTH_EMAIL_FAILED"]],
   );
   for (const user of snapshot.profiles) {
     await database.query(

@@ -1,10 +1,11 @@
 import "server-only";
 
 import { Resend } from "resend";
-import type { AuthTokenType } from "@/generated/prisma/client";
+import type { AuthDeliveryStatus, AuthTokenType } from "@/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
 
 export interface AuthEmailRecipient {
-  email: string;
+  email: string | null;
   name: string;
 }
 
@@ -12,6 +13,8 @@ export interface AuthEmailResult {
   sent: boolean;
   simulated: boolean;
   message: string;
+  status: AuthDeliveryStatus;
+  providerMessageId?: string;
 }
 
 function escapeHtml(value: string) {
@@ -72,13 +75,17 @@ export async function sendAuthEmail(
       <p style="color:#66736d;font-size:13px">Si vous n’êtes pas à l’origine de cette demande, ignorez ce message.</p>
     </div>`;
 
+  if (!recipient.email) {
+    return { sent: false, simulated: false, status: "NOT_APPLICABLE", message: "Aucun e-mail n’est associé à ce compte." };
+  }
+
   if (process.env.AUTH_EMAIL_MODE === "mock" || (process.env.NODE_ENV !== "production" && !authEmailConfigurationReady())) {
     if (process.env.NODE_ENV !== "test") console.info(`[auth-email:mock] ${type} destiné à ${recipient.email}`);
-    return { sent: true, simulated: true, message: "E-mail simulé en environnement local." };
+    return { sent: true, simulated: true, status: "SIMULATED", message: "E-mail simulé en environnement local." };
   }
 
   if (!authEmailConfigurationReady()) {
-    return { sent: false, simulated: false, message: "Le transport d’e-mail de production n’est pas configuré." };
+    return { sent: false, simulated: false, status: "FAILED", message: "Le transport d’e-mail de production n’est pas configuré." };
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY);
@@ -91,7 +98,34 @@ export async function sendAuthEmail(
   }, { idempotencyKey });
 
   if (response.error) {
-    return { sent: false, simulated: false, message: "L’e-mail n’a pas pu être envoyé." };
+    return { sent: false, simulated: false, status: "FAILED", message: "L’e-mail n’a pas pu être envoyé." };
   }
-  return { sent: true, simulated: false, message: "E-mail envoyé." };
+  return { sent: true, simulated: false, status: "ACCEPTED", providerMessageId: response.data?.id, message: "E-mail accepté par le service d’envoi." };
+}
+
+export async function deliverAuthEmail(
+  tokenId: string,
+  recipient: AuthEmailRecipient,
+  type: AuthTokenType,
+  token: string,
+  actorId: string | null,
+) {
+  const result = await sendAuthEmail(recipient, type, token, `${type.toLocaleLowerCase()}:${tokenId}`)
+    .catch((): AuthEmailResult => ({ sent: false, simulated: false, status: "FAILED", message: "L’e-mail n’a pas pu être envoyé." }));
+  await prisma.$transaction([
+    prisma.authToken.update({
+      where: { id: tokenId },
+      data: { deliveryStatus: result.status, providerMessageId: result.providerMessageId, deliveryAttemptedAt: new Date() },
+    }),
+    prisma.auditLog.create({
+      data: {
+        actorId,
+        action: `AUTH_EMAIL_${result.status}`,
+        entityType: "AuthToken",
+        entityId: tokenId,
+        metadata: { type },
+      },
+    }),
+  ]).catch(() => undefined);
+  return result;
 }

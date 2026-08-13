@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, ShieldOff, Trash2, UserRound } from "lucide-react";
+import { BookOpen, Check, Copy, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, ShieldOff, Trash2, UserRound } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -61,6 +61,7 @@ import type {
 import type { Role, UserStatus } from "@/types";
 import { currentAcademicYear } from "@/lib/academic-calendar";
 import { getCourseDeleteBlockers, getPromotionDeleteBlockers, getUserDeleteBlockers } from "@/lib/admin-domain";
+import type { AccountAccessState, AuthAccessCredential } from "@/types/auth";
 
 const roleLabels: Record<Role, string> = {
   ADMIN: "Administrateur",
@@ -177,6 +178,36 @@ function DetailLine({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+function AccessCredentialDialog({ credential, onClose }: { credential?: AuthAccessCredential; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  if (!credential) return null;
+  const delivery = credential.deliveryStatus === "ACCEPTED" ? "E-mail accepté par le service d’envoi"
+    : credential.deliveryStatus === "SIMULATED" ? "Code à remettre directement"
+      : credential.deliveryStatus === "FAILED" ? "Échec de l’envoi par e-mail"
+        : "Aucun e-mail associé";
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Code à remettre à l’utilisateur</DialogTitle>
+          <DialogDescription>Ce code ne sera plus affiché après la fermeture. Un nouveau code invalidera celui-ci.</DialogDescription>
+        </DialogHeader>
+        <div className="border bg-muted/30 p-5 text-center">
+          <p className="font-mono text-2xl font-semibold tracking-normal">{credential.manualCode}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Expire le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lubumbashi" }).format(new Date(credential.expiresAt))}</p>
+        </div>
+        <Alert><AlertDescription>{delivery}. Le code reste utilisable jusqu’à son expiration.</AlertDescription></Alert>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+          <Button onClick={async () => { await navigator.clipboard.writeText(credential.manualCode); setCopied(true); }}>
+            {copied ? <Check /> : <Copy />}{copied ? "Code copié" : "Copier le code"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RowActions({ onView, onEdit, onDelete, deleteDisabled = false }: { onView: () => void; onEdit: () => void; onDelete: () => void; deleteDisabled?: boolean }) {
   return (
     <DropdownMenu>
@@ -196,10 +227,12 @@ function UserFormDialog({
   open,
   onOpenChange,
   user,
+  onCredential,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user?: AdminUser;
+  onCredential: (credential: AuthAccessCredential) => void;
 }) {
   const { state, createUser, updateUser, isPending } = useAdminData();
   const [role, setRole] = useState<Role>(user?.role ?? "STUDENT");
@@ -228,6 +261,9 @@ function UserFormDialog({
     }
     setErrors({});
     onOpenChange(false);
+    if (result.value?.manualCode && result.value.expiresAt && result.value.deliveryStatus) {
+      onCredential(result.value as AuthAccessCredential);
+    }
   }
 
   return (
@@ -246,7 +282,7 @@ function UserFormDialog({
               <FieldMessage message={errors.name} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="user-email">Adresse e-mail</Label>
+              <Label htmlFor="user-email">Adresse e-mail {role === "STUDENT" ? "(optionnelle)" : ""}</Label>
               <Input id="user-email" name="email" type="email" aria-invalid={Boolean(errors.email)} defaultValue={user?.email} placeholder="prenom@etablissement.cd" />
               <FieldMessage message={errors.email} />
             </div>
@@ -315,6 +351,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const [editingId, setEditingId] = useState<string>();
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [credential, setCredential] = useState<AuthAccessCredential>();
   const selected = state.users.find((user) => user.id === selectedId);
   const editing = state.users.find((user) => user.id === editingId);
   const deleteBlockers = useMemo(() => new Map(state.users.map((user) => [user.id, getUserDeleteBlockers(state, user.id, viewerId)])), [state, viewerId]);
@@ -331,7 +368,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("fr");
     return state.users.filter((user) => (
-      (!normalized || `${user.name} ${user.email} ${user.matricule ?? ""}`.toLocaleLowerCase("fr").includes(normalized)) &&
+      (!normalized || `${user.name} ${user.email ?? ""} ${user.matricule ?? ""}`.toLocaleLowerCase("fr").includes(normalized)) &&
       (role === "ALL" || user.role === role) &&
       (status === "ALL" || user.status === status)
     ));
@@ -343,10 +380,15 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   }
 
   function accessState(user: AdminUser) {
-    if (user.status === "INACTIVE") return { label: "Compte inactif", className: "bg-slate-100 text-slate-700" };
-    if (!user.activatedAt) return { label: user.invitationPending ? "Invitation en attente" : "Invitation à renvoyer", className: "bg-amber-100 text-amber-800" };
-    if (user.mustChangePassword) return { label: "Mot de passe à modifier", className: "bg-sky-100 text-sky-800" };
-    return { label: "Compte activé", className: "bg-emerald-100 text-emerald-800" };
+    const labels: Record<AccountAccessState, { label: string; className: string }> = {
+      INACTIVE: { label: "Compte inactif", className: "bg-slate-100 text-slate-700" },
+      INVITATION_REQUIRED: { label: "Invitation à générer", className: "bg-amber-100 text-amber-800" },
+      INVITATION_PENDING: { label: "Activation en attente", className: "bg-amber-100 text-amber-800" },
+      INVITATION_EXPIRED: { label: "Invitation expirée", className: "bg-red-100 text-red-800" },
+      PASSWORD_CHANGE_REQUIRED: { label: "Mot de passe à modifier", className: "bg-sky-100 text-sky-800" },
+      ACTIVE: { label: "Compte activé", className: "bg-emerald-100 text-emerald-800" },
+    };
+    return labels[user.accessState ?? (user.status === "INACTIVE" ? "INACTIVE" : user.activatedAt ? user.mustChangePassword ? "PASSWORD_CHANGE_REQUIRED" : "ACTIVE" : "INVITATION_REQUIRED")];
   }
 
   return (
@@ -389,7 +431,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                     <TableCell>
                       <button className="text-left" onClick={() => setSelectedId(user.id)}>
                         <span className="block font-medium">{user.name}</span>
-                        <span className="block text-xs text-muted-foreground">{user.email}</span>
+                        <span className="block text-xs text-muted-foreground">{user.email ?? user.matricule ?? "Sans identifiant"}</span>
                       </button>
                     </TableCell>
                     <TableCell>{roleLabels[user.role]}</TableCell>
@@ -409,7 +451,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
               <span className="flex size-9 shrink-0 items-center justify-center bg-primary/8 text-primary"><UserRound className="size-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{user.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">{roleLabels[user.role]} · {user.email}</span>
+                <span className="block truncate text-xs text-muted-foreground">{roleLabels[user.role]} · {user.email ?? user.matricule ?? "Sans e-mail"}</span>
               </span>
               <Badge className={accessState(user).className}>{accessState(user).label}</Badge>
             </button>
@@ -427,28 +469,31 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                 <SheetDescription>{roleLabels[selected.role]} · compte créé le {new Date(selected.createdAt).toLocaleDateString("fr-FR")}</SheetDescription>
               </SheetHeader>
               <div className="px-4">
-                <DetailLine label="E-mail">{selected.email}</DetailLine>
+                <DetailLine label="E-mail">{selected.email ?? "Non renseigné"}</DetailLine>
                 <DetailLine label="Statut"><StatusBadge status={selected.status} /></DetailLine>
                 <DetailLine label="Accès"><Badge className={accessState(selected).className}>{accessState(selected).label}</Badge></DetailLine>
                 <DetailLine label="Dernière connexion">{selected.lastLoginAt ? new Date(selected.lastLoginAt).toLocaleString("fr-FR") : "Jamais"}</DetailLine>
+                <DetailLine label="Sessions actives">{selected.activeSessionCount ?? 0}</DetailLine>
+                {selected.invitationExpiresAt ? <DetailLine label="Expiration du code">{new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Africa/Lubumbashi" }).format(new Date(selected.invitationExpiresAt))}</DetailLine> : null}
                 <DetailLine label="Promotion">{state.promotions.find((item) => item.id === selected.promotionId)?.name ?? "Non concerné"}</DetailLine>
                 <DetailLine label="Matricule">{selected.matricule ?? "Non concerné"}</DetailLine>
                 {selectedBlockers.length > 0 && <Alert className="mt-4"><AlertTitle>Suppression indisponible</AlertTitle><AlertDescription>{selectedBlockers.join(" ")}</AlertDescription></Alert>}
               </div>
               <div className="grid gap-2 px-4 pb-2">
-                {!selected.activatedAt ? <Button variant="outline" disabled={isPending(`user:${selected.id}:invite`)} onClick={() => resendInvitation(selected.id)}><Mail />Renvoyer l’invitation</Button> : <Button variant="outline" disabled={isPending(`user:${selected.id}:reset-password`)} onClick={() => sendPasswordReset(selected.id)}><KeyRound />Envoyer une réinitialisation</Button>}
+                {!selected.activatedAt ? <Button variant="outline" disabled={isPending(`user:${selected.id}:invite`)} onClick={async () => { const result = await resendInvitation(selected.id); if (result.value) setCredential(result.value); }}><Mail />Générer un nouveau code</Button> : <Button variant="outline" disabled={isPending(`user:${selected.id}:reset-password`)} onClick={async () => { const result = await sendPasswordReset(selected.id); if (result.value) setCredential(result.value); }}><KeyRound />Préparer une réinitialisation</Button>}
                 {selected.id !== viewerId ? <Button variant="outline" disabled={isPending(`user:${selected.id}:revoke`)} onClick={() => revokeUserSessions(selected.id)}><ShieldOff />Révoquer les sessions</Button> : null}
               </div>
               <SheetFooter className="grid grid-cols-1 sm:grid-cols-3">
                 <Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button>
-                <Button variant="outline" disabled={isPending(`user:${selected.id}:status`)} onClick={() => setUserStatus(selected.id, selected.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}><Power />{selected.status === "ACTIVE" ? "Désactiver" : "Activer"}</Button>
+                <Button variant="outline" disabled={isPending(`user:${selected.id}:status`)} onClick={async () => { const result = await setUserStatus(selected.id, selected.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"); if (result.value?.manualCode && result.value.expiresAt && result.value.deliveryStatus) setCredential(result.value as AuthAccessCredential); }}><Power />{selected.status === "ACTIVE" ? "Désactiver" : "Activer"}</Button>
                 <Button variant="destructive" disabled={selectedBlockers.length > 0} onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button>
               </SheetFooter>
             </>
           )}
         </SheetContent>
       </Sheet>
-      <UserFormDialog key={`${editing?.id ?? "new"}-${formOpen}`} open={formOpen} onOpenChange={setFormOpen} user={editing} />
+      <UserFormDialog key={`${editing?.id ?? "new"}-${formOpen}`} open={formOpen} onOpenChange={setFormOpen} user={editing} onCredential={setCredential} />
+      <AccessCredentialDialog credential={credential} onClose={() => setCredential(undefined)} />
       {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.name} ?`} description="Cette action est définitive et sera refusée si des données dépendent de ce compte." onDelete={() => deleteUser(selected.id)} onDeleted={() => setSelectedId(undefined)} />}
     </div>
   );

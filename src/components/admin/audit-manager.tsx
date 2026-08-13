@@ -42,6 +42,25 @@ const actionLabels: Record<string, string> = {
   REJECT_CORRECTION_REQUEST: "Correction refusée",
   EXPORT_STATISTICS: "Export des statistiques",
   EXPORT_ATTENDANCES: "Export des présences",
+  LOGIN_SUCCESS: "Connexion réussie",
+  LOGOUT: "Déconnexion",
+  REQUEST_PASSWORD_RESET: "Réinitialisation demandée",
+  RESET_PASSWORD: "Mot de passe réinitialisé",
+  CHANGE_PASSWORD: "Mot de passe modifié",
+  ACTIVATE_ACCOUNT: "Compte activé",
+  SEND_INVITATION: "Invitation créée",
+  RESEND_INVITATION: "Invitation renouvelée",
+  SEND_PASSWORD_RESET: "Réinitialisation préparée",
+  REVOKE_SESSION: "Session révoquée",
+  REVOKE_OTHER_SESSIONS: "Autres sessions révoquées",
+  REVOKE_USER_SESSIONS: "Sessions utilisateur révoquées",
+  AUTH_THROTTLE_BLOCK: "Tentatives temporairement bloquées",
+  AUTH_EMAIL_NOT_APPLICABLE: "Envoi e-mail non applicable",
+  AUTH_EMAIL_SIMULATED: "Code remis directement",
+  OPERATOR_PASSWORD_RESET_CODE: "Code de récupération opérateur",
+  AUTH_EMAIL_ACCEPTED: "E-mail accepté par le service",
+  AUTH_EMAIL_FAILED: "Échec de l’envoi e-mail",
+  BOOTSTRAP_ADMIN: "Premier administrateur créé",
 };
 
 const entityLabels: Record<string, string> = {
@@ -51,6 +70,9 @@ const entityLabels: Record<string, string> = {
   Session: "Session",
   Attendance: "Présence",
   AttendanceCorrectionRequest: "Demande de correction",
+  AuthSession: "Session de connexion",
+  AuthToken: "Jeton d’accès",
+  AuthThrottle: "Protection anti-abus",
 };
 
 export function AuditManager() {

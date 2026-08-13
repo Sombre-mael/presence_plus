@@ -11,6 +11,9 @@ describe("auth navigation", () => {
   it("refuse les redirections ouvertes", () => {
     expect(safeCallbackUrl("https://evil.example")).toBe("/dashboard");
     expect(safeCallbackUrl("//evil.example")).toBe("/dashboard");
+    expect(safeCallbackUrl("/\\evil.example")).toBe("/dashboard");
+    expect(safeCallbackUrl("/%2F%2Fevil.example")).toBe("/dashboard");
+    expect(safeCallbackUrl("/%E0%A4%A")).toBe("/dashboard");
     expect(safeCallbackUrl("/student/history")).toBe("/student/history");
   });
 });

@@ -13,8 +13,9 @@ import {
 } from "@/lib/academic-repository";
 import { getAuthenticatedViewer, type AuthenticatedViewer } from "@/lib/authenticated-viewer";
 import { issueAuthToken } from "@/lib/auth-token.server";
-import { sendAuthEmail } from "@/lib/auth-email.server";
+import { deliverAuthEmail } from "@/lib/auth-email.server";
 import { unusablePassword } from "@/lib/auth-crypto.server";
+import { revokeAuthSessions } from "@/lib/auth-session.server";
 import {
   createPreviewReceipt,
   createServerQrToken,
@@ -42,6 +43,7 @@ import type {
   AttendanceInput,
   MutationResult,
   TeacherSessionInput,
+  UserAccessMutationValue,
 } from "@/types/admin";
 import type {
   CheckInPreview,
@@ -56,6 +58,7 @@ import { addAcademicDays } from "@/lib/academic-calendar";
 import { prismaMutationFailure } from "@/lib/prisma-errors";
 import { isWithinSessionStartWindow } from "@/lib/session-lifecycle";
 import { SERIALIZABLE_TRANSACTION_OPTIONS } from "@/lib/transaction-options";
+import type { AuthAccessCredential } from "@/types/auth";
 
 export type AcademicActionResult<T = undefined> = MutationResult & {
   patch?: AcademicPatch;
@@ -73,7 +76,7 @@ async function success<T = undefined>(viewer: AuthenticatedViewer, message: stri
   }
 }
 
-function failure(result: MutationResult): AcademicActionResult {
+function failure<T = undefined>(result: MutationResult): AcademicActionResult<T> {
   return result;
 }
 
@@ -100,8 +103,12 @@ async function userStatusBlocker(
 ) {
   if (status === "ACTIVE") return null;
   if (id === viewerId) return "Vous ne pouvez pas désactiver le profil administrateur utilisé.";
-  const user = await database.user.findUnique({ where: { id }, select: { role: true } });
+  const user = await database.user.findUnique({ where: { id }, select: { role: true, status: true } });
   if (!user) return "Utilisateur introuvable.";
+  if (user.role === "ADMIN" && user.status === "ACTIVE") {
+    const otherAdmins = await database.user.count({ where: { id: { not: id }, role: "ADMIN", status: "ACTIVE" } });
+    if (!otherAdmins) return "Le dernier administrateur actif ne peut pas être désactivé.";
+  }
   if (user.role === "TEACHER") {
     const blocking = await database.session.count({ where: { teacherId: id, status: { in: ["SCHEDULED", "ACTIVE"] } } });
     if (blocking) return `${blocking} session(s) planifiée(s) ou active(s) doivent d’abord être traitées.`;
@@ -111,6 +118,13 @@ async function userStatusBlocker(
     if (blocking) return "Cet étudiant appartient à l’effectif d’une session active.";
   }
   return null;
+}
+
+async function lastAdminRoleBlocker(database: Prisma.TransactionClient, id: string, nextRole: AdminUserInput["role"]) {
+  const user = await database.user.findUnique({ where: { id }, select: { role: true, status: true } });
+  if (!user || user.role !== "ADMIN" || user.status !== "ACTIVE" || nextRole === "ADMIN") return null;
+  const otherAdmins = await database.user.count({ where: { id: { not: id }, role: "ADMIN", status: "ACTIVE" } });
+  return otherAdmins ? null : "Le rôle du dernier administrateur actif ne peut pas être modifié.";
 }
 
 async function viewerFor(role?: AuthenticatedViewer["role"]) {
@@ -130,9 +144,12 @@ async function createAndSendInvitation(userId: string, actorId: string) {
     await audit(actorId, "SEND_INVITATION", "User", userId, undefined, tx);
     return { user, token };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  const mail = await sendAuthEmail(issued.user, "INVITATION", issued.token.token, `invitation:${issued.token.id}`)
-    .catch(() => ({ sent: false, simulated: false, message: "Échec de l’envoi." }));
-  return mail.sent;
+  const delivery = await deliverAuthEmail(issued.token.id, issued.user, "INVITATION", issued.token.token, actorId);
+  return {
+    manualCode: issued.token.manualCode,
+    expiresAt: issued.token.expiresAt.toISOString(),
+    deliveryStatus: delivery.status,
+  } satisfies AuthAccessCredential;
 }
 
 export async function loadAcademicDataAction() {
@@ -232,13 +249,14 @@ export async function loadAdminAuditLogsAction(input: AdminAuditQuery): Promise<
   };
 }
 
-export async function createUserAction(input: AdminUserInput) {
+export async function createUserAction(input: AdminUserInput): Promise<AcademicActionResult<UserAccessMutationValue>> {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
   const state = await getAcademicSnapshot(viewer);
   const validation = validateUser(state, input);
   if (!validation.ok) return failure(validation);
   const id = randomUUID();
+  const email = input.email?.trim().toLowerCase() || null;
   const passwordHash = await bcrypt.hash(unusablePassword(), 12);
   let invitation: Awaited<ReturnType<typeof issueAuthToken>> | null;
   try {
@@ -247,7 +265,7 @@ export async function createUserAction(input: AdminUserInput) {
         data: {
           id,
           name: input.name.trim(),
-          email: input.email.trim().toLowerCase(),
+          email,
           role: input.role,
           status: input.status,
           activatedAt: null,
@@ -267,25 +285,28 @@ export async function createUserAction(input: AdminUserInput) {
     return prismaFailure(error, "L’utilisateur n’a pas pu être créé.");
   }
   if (!invitation) return success(viewer, `${validation.message} Le compte inactif n’a pas reçu d’invitation.`, ["users", "auditLogs"], { id });
-  const mail = await sendAuthEmail(
-    { email: input.email.trim().toLowerCase(), name: input.name.trim() },
-    "INVITATION",
-    invitation.token,
-    `invitation:${invitation.id}`,
-  ).catch(() => ({ sent: false, simulated: false, message: "L’e-mail n’a pas pu être envoyé." }));
-  const message = mail.sent
-    ? `${validation.message} Invitation ${mail.simulated ? "simulée" : "envoyée"}.`
-    : `${validation.message} L’invitation n’a pas été envoyée; utilisez « Renvoyer l’invitation ».`;
-  return success(viewer, message, ["users", "auditLogs"], { id });
+  const delivery = await deliverAuthEmail(invitation.id, { email, name: input.name.trim() }, "INVITATION", invitation.token, viewer.id);
+  const message = delivery.status === "NOT_APPLICABLE"
+    ? `${validation.message} Un code d’activation a été généré.`
+    : delivery.status === "FAILED"
+      ? `${validation.message} Le code est disponible, mais l’e-mail n’a pas été accepté.`
+      : `${validation.message} ${delivery.status === "SIMULATED" ? "Le code est prêt à être remis directement à l’utilisateur." : "L’envoi a été accepté par le service d’e-mail."}`;
+  return success(viewer, message, ["users", "auditLogs"], {
+    id,
+    manualCode: invitation.manualCode,
+    expiresAt: invitation.expiresAt.toISOString(),
+    deliveryStatus: delivery.status,
+  });
 }
 
-export async function updateUserAction(id: string, input: AdminUserInput) {
+export async function updateUserAction(id: string, input: AdminUserInput): Promise<AcademicActionResult<UserAccessMutationValue>> {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
   const state = await getAcademicSnapshot(viewer);
   const validation = validateUser(state, input, id);
   if (!validation.ok) return failure(validation);
   const current = state.users.find((user) => user.id === id);
+  const email = input.email?.trim().toLowerCase() || null;
   if (!current) return failure({ ok: false, message: "Utilisateur introuvable." });
   if (current.role !== input.role) {
     const hasDependencies = state.courses.some((course) => course.teacherId === id) ||
@@ -300,6 +321,8 @@ export async function updateUserAction(id: string, input: AdminUserInput) {
       const persisted = await tx.user.findUnique({ where: { id }, select: { role: true, status: true, email: true } });
       if (!persisted) throw Object.assign(new Error("Utilisateur introuvable."), { code: "BUSINESS_RULE" });
       if (persisted.role !== input.role) {
+        const adminBlocker = await lastAdminRoleBlocker(tx, id, input.role);
+        if (adminBlocker) throw Object.assign(new Error(adminBlocker), { code: "BUSINESS_ROLE" });
         const dependencies = await Promise.all([
           tx.course.count({ where: { teacherId: id } }),
           tx.session.count({ where: { teacherId: id } }),
@@ -315,12 +338,12 @@ export async function updateUserAction(id: string, input: AdminUserInput) {
         const blocker = await userStatusBlocker(tx, id, input.status, viewer.id);
         if (blocker) throw Object.assign(new Error(blocker), { code: "BUSINESS_RULE" });
       }
-      const securityChanged = persisted.role !== input.role || persisted.status !== input.status || persisted.email.toLocaleLowerCase("fr") !== input.email.trim().toLocaleLowerCase("fr");
+      const securityChanged = persisted.role !== input.role || persisted.status !== input.status || persisted.email?.toLocaleLowerCase("fr") !== email?.toLocaleLowerCase("fr");
       await tx.user.update({
         where: { id },
         data: {
           name: input.name.trim(),
-          email: input.email.trim().toLowerCase(),
+          email,
           role: input.role,
           status: input.status,
           ...(securityChanged ? { sessionVersion: { increment: 1 } } : {}),
@@ -331,7 +354,9 @@ export async function updateUserAction(id: string, input: AdminUserInput) {
         },
       });
       if (securityChanged) {
-        await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: new Date() } });
+        const now = new Date();
+        await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: now } });
+        await revokeAuthSessions(tx, id, "ACCOUNT_SECURITY_CHANGED", undefined, now);
       }
       await audit(viewer.id, "UPDATE_USER", "User", id, undefined, tx);
     }, SERIALIZABLE_TRANSACTION_OPTIONS);
@@ -345,8 +370,8 @@ export async function updateUserAction(id: string, input: AdminUserInput) {
     return prismaFailure(error, "L’utilisateur n’a pas pu être modifié.");
   }
   if (current.status === "INACTIVE" && input.status === "ACTIVE" && !current.activatedAt) {
-    const sent = await createAndSendInvitation(id, viewer.id).catch(() => false);
-    return success(viewer, `${validation.message} ${sent ? "Invitation envoyée." : "L’invitation doit être renvoyée."}`, ["users", "auditLogs"]);
+    const credential = await createAndSendInvitation(id, viewer.id);
+    return success(viewer, `${validation.message} Un nouveau code d’activation a été généré.`, ["users", "auditLogs"], credential);
   }
   return success(viewer, validation.message, ["users", "auditLogs"]);
 }
@@ -359,16 +384,19 @@ export async function deleteUserAction(id: string) {
   if (blockers.length) return failure({ ok: false, message: blockers.join(" ") });
   try {
     await prisma.$transaction(async (tx) => {
+      const blocker = await lastAdminRoleBlocker(tx, id, "STUDENT");
+      if (blocker) throw Object.assign(new Error("Le dernier administrateur actif ne peut pas être supprimé."), { code: "BUSINESS_RULE" });
       await tx.user.delete({ where: { id } });
       await audit(viewer.id, "DELETE_USER", "User", id, undefined, tx);
     }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "BUSINESS_RULE") return failure({ ok: false, message: error.message });
     return prismaFailure(error, "L’utilisateur n’a pas pu être supprimé.");
   }
   return success(viewer, "Utilisateur supprimé.", ["users", "auditLogs"]);
 }
 
-export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTIVE") {
+export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTIVE"): Promise<AcademicActionResult<UserAccessMutationValue>> {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
   const current = await prisma.user.findUnique({ where: { id }, select: { activatedAt: true } });
@@ -376,9 +404,11 @@ export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTI
     await prisma.$transaction(async (tx) => {
       const blocker = await userStatusBlocker(tx, id, status, viewer.id);
       if (blocker) throw Object.assign(new Error(blocker), { code: "BUSINESS_RULE" });
+      const now = new Date();
       await tx.user.update({ where: { id }, data: { status, sessionVersion: { increment: 1 } } });
+      await revokeAuthSessions(tx, id, "ACCOUNT_STATUS_CHANGED", undefined, now);
       if (status === "INACTIVE") {
-        await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: new Date() } });
+        await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: now } });
       }
       await audit(viewer.id, status === "ACTIVE" ? "ACTIVATE_USER" : "DEACTIVATE_USER", "User", id, undefined, tx);
     }, SERIALIZABLE_TRANSACTION_OPTIONS);
@@ -387,8 +417,8 @@ export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTI
     return prismaFailure(error, "Le statut du compte n’a pas pu être modifié.");
   }
   if (status === "ACTIVE" && !current?.activatedAt) {
-    const sent = await createAndSendInvitation(id, viewer.id).catch(() => false);
-    return success(viewer, sent ? "Compte activé et invitation envoyée." : "Compte activé; l’invitation doit être renvoyée.", ["users", "auditLogs"]);
+    const credential = await createAndSendInvitation(id, viewer.id);
+    return success(viewer, "Compte activé et nouveau code d’activation généré.", ["users", "auditLogs"], credential);
   }
   return success(viewer, status === "ACTIVE" ? "Compte activé." : "Compte désactivé.", ["users", "auditLogs"]);
 }
