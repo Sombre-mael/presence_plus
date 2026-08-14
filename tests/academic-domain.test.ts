@@ -118,14 +118,14 @@ describe("règles métier enseignant", () => {
     expect(missingRecordCorrection.fieldErrors?.correctionReason).toBeDefined();
   });
 
-  it("renouvelle le token QR par fenêtre de trente secondes", () => {
-    const first = createQrToken("session-001", 60_000);
-    const sameWindow = createQrToken("session-001", 89_999);
-    const nextWindow = createQrToken("session-001", 90_000);
+  it("renouvelle le token QR par fenêtre de dix secondes", () => {
+    const first = createQrToken("session-001", 20_000);
+    const sameWindow = createQrToken("session-001", 29_999);
+    const nextWindow = createQrToken("session-001", 30_000);
 
     expect(first.value).toBe(sameWindow.value);
     expect(nextWindow.value).not.toBe(first.value);
-    expect(first.expiresAt).toBe(90_000);
+    expect(first.expiresAt).toBe(30_000);
   });
 
   it("migre les stockages précédents vers le modèle académique v3", () => {

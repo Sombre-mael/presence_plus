@@ -12,6 +12,11 @@ const localNetworkOrigins = Object.values(networkInterfaces())
   .filter((network) => network.family === "IPv4" && !network.internal)
   .map((network) => network.address);
 
+const releaseVersion =
+  process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
+  process.env.NEXT_PUBLIC_APP_VERSION?.trim() ||
+  `build-${Date.now()}`;
+
 if (process.env.VERCEL_ENV === "production") {
   const requiredProductionVariables = [
     "DATABASE_URL",
@@ -38,6 +43,9 @@ if (process.env.VERCEL_ENV === "production") {
 }
 
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_APP_VERSION: releaseVersion,
+  },
   allowedDevOrigins: configuredDevOrigins?.length
     ? configuredDevOrigins
     : [...new Set(["127.0.0.1", "localhost", ...localNetworkOrigins])],

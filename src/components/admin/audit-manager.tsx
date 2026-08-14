@@ -116,7 +116,7 @@ export function AuditManager() {
         setTotal(result.total);
         setError("");
       } catch {
-        if (active) setError("Le journal n’a pas pu être chargé depuis Neon.");
+        if (active) setError("Le journal d’activité n’a pas pu être chargé.");
       }
     });
     return () => { active = false; };
@@ -132,7 +132,7 @@ export function AuditManager() {
 
   return (
     <div>
-      <PageHeader title="Journal d’activité" description={`${total} opération${total > 1 ? "s" : ""} confirmée${total > 1 ? "s" : ""} par Neon.`} />
+      <PageHeader title="Journal d’activité" description={`${total} opération${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`} />
       {error && <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
       <div className="border bg-background">
         <div className="grid gap-2 border-b p-4 md:grid-cols-[minmax(220px,1fr)_180px_210px_170px_170px]">

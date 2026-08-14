@@ -36,13 +36,13 @@ test("responsive, mouvement réduit et reprise après panne réseau", async ({ p
 
   await context.setOffline(true);
   await page.getByRole("button", { name: /Aline Kabeya/ }).click();
-  await page.getByRole("menuitem", { name: "Recharger depuis Neon" }).click();
+  await page.getByRole("menuitem", { name: "Actualiser les données" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Données affichées hors synchronisation" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pilotage académique" })).toBeVisible();
 
   await context.setOffline(false);
   await page.getByRole("button", { name: "Réessayer" }).click();
-  await expect(page.getByText("Données rechargées depuis Neon.")).toBeVisible();
+  await expect(page.getByText("Données actualisées.")).toBeVisible();
   await expect(page.getByText("Données affichées hors synchronisation.")).toBeHidden();
   expect(pageErrors).toEqual([]);
 });

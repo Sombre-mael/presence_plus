@@ -12,9 +12,9 @@ import {
 describe("règles métier étudiant", () => {
   it("accepte les fenêtres QR courante et précédente", () => {
     const state = freshAdminData();
-    const now = 90_000;
+    const now = 30_000;
     const current = createQrToken("session-001", now).value;
-    const previous = createQrToken("session-001", now - 30_000).value;
+    const previous = createQrToken("session-001", now - 10_000).value;
 
     expect(validateStudentCheckIn(state, current, "u4", "STUDENT_CODE", now).ok).toBe(true);
     expect(validateStudentCheckIn(state, previous, "u4", "STUDENT_CODE", now).ok).toBe(true);
@@ -22,21 +22,21 @@ describe("règles métier étudiant", () => {
 
   it("refuse un QR expiré, fermé ou destiné à une autre promotion", () => {
     const state = freshAdminData();
-    const now = 120_000;
+    const now = 50_000;
     const expiredPayload = JSON.stringify({
       sessionId: "session-001",
-      token: createQrToken("session-001", 30_000).value,
-      expiresAt: 60_000,
+      token: createQrToken("session-001", 20_000).value,
+      expiresAt: 30_000,
     });
     const closedPayload = JSON.stringify({
       sessionId: "session-004",
       token: createQrToken("session-004", now).value,
-      expiresAt: 150_000,
+      expiresAt: 60_000,
     });
     const otherPromotion = JSON.stringify({
       sessionId: "session-001",
       token: createQrToken("session-001", now).value,
-      expiresAt: 150_000,
+      expiresAt: 60_000,
     });
 
     expect(validateStudentCheckIn(state, expiredPayload, "u4", "QR", now)).toMatchObject({ ok: false, code: "EXPIRED" });
@@ -59,10 +59,10 @@ describe("règles métier étudiant", () => {
     });
     const result = validateStudentCheckIn(
       state,
-      createQrToken("session-001", 90_000).value,
+      createQrToken("session-001", 30_000).value,
       "u4",
       "STUDENT_CODE",
-      90_000,
+      30_000,
     );
 
     expect(result).toMatchObject({ ok: true, alreadyRecorded: true });
@@ -129,7 +129,7 @@ describe("règles métier étudiant", () => {
     }).ok).toBe(true);
   });
 
-  it("signale un résultat Neon manquant sans le compter comme une absence", () => {
+  it("signale un résultat manquant sans le compter comme une absence", () => {
     const state = freshAdminData();
     const before = getStudentStats(state, "u4");
     const completedSession = state.sessions.find((item) =>

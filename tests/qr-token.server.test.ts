@@ -11,14 +11,24 @@ describe("server QR tokens", () => {
     process.env.AUTH_SECRET = "test-secret-presence-plus";
   });
 
-  it("accepts the current and previous 30-second windows", () => {
+  it("accepts the current and previous 10-second windows", () => {
     const now = 1_800_000;
     const current = createServerQrToken("session-1", now);
-    const previous = createServerQrToken("session-1", now - 30_000);
+    const previous = createServerQrToken("session-1", now - 10_000);
 
     expect(matchesServerQrToken("session-1", current.value, now)).toBe(true);
     expect(matchesServerQrToken("session-1", previous.value, now)).toBe(true);
     expect(matchesServerQrToken("another-session", current.value, now)).toBe(false);
+  });
+
+  it("rotates the pointage code every 10 seconds", () => {
+    const first = createServerQrToken("session-1", 20_000);
+    const sameWindow = createServerQrToken("session-1", 29_999);
+    const nextWindow = createServerQrToken("session-1", 30_000);
+
+    expect(first.value).toBe(sameWindow.value);
+    expect(first.expiresAt).toBe(30_000);
+    expect(nextWindow.value).not.toBe(first.value);
   });
 
   it("signs a preview receipt that expires after 60 seconds", () => {

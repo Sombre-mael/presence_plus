@@ -17,7 +17,7 @@ export function apiFailure(error: unknown) {
       error: configuration
         ? "Le serveur Presence Plus est incompletement configure."
         : database
-          ? "Neon est temporairement indisponible."
+          ? "Le service de données est temporairement indisponible."
           : "Une erreur interne a interrompu la requete.",
       code: configuration ? "SERVER_CONFIGURATION_ERROR" : database ? "DATABASE_UNAVAILABLE" : "INTERNAL_ERROR",
     },

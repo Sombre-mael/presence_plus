@@ -74,7 +74,7 @@ describe("règles métier administrateur", () => {
     expect(teacher.fieldErrors?.email).toBeDefined();
   });
 
-  it("aligne l’unicité des promotions sur la contrainte Neon", () => {
+  it("aligne l’unicité des promotions sur la contrainte de base de données", () => {
     const result = validatePromotion(freshAdminData(), {
       name: "L2 Informatique",
       department: "Sciences informatiques",

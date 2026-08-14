@@ -237,7 +237,7 @@ export async function cleanupAllE2EData() {
       )::text AS count`,
     );
     if (Number(residue.rows[0]?.count ?? 0) !== 0) {
-      throw new Error("Le nettoyage E2E a laissé des données de scénario dans Neon.");
+      throw new Error("Le nettoyage E2E a laissé des données de scénario dans la base de test.");
     }
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

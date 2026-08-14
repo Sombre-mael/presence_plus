@@ -168,7 +168,7 @@ export function AdminSessionDetail({ id }: { id: string }) {
     return (
       <div className="py-16 text-center">
         <h1 className="text-xl font-semibold">Session introuvable</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Cette session n’existe plus dans Neon ou n’est plus accessible.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Cette session n’existe plus ou n’est plus accessible.</p>
         <Button asChild variant="outline" className="mt-5"><Link href="/admin/sessions"><ArrowLeft />Retour aux sessions</Link></Button>
       </div>
     );

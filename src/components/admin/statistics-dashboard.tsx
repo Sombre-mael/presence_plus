@@ -80,7 +80,7 @@ export function StatisticsDashboard() {
       await resetData();
       notify("Export CSV généré selon les filtres actifs.");
     } catch {
-      setExportError("L’export n’a pas pu être généré depuis Neon. Réessayez.");
+      setExportError("L’export n’a pas pu être généré. Réessayez.");
     } finally {
       setExporting(false);
     }
@@ -90,7 +90,7 @@ export function StatisticsDashboard() {
     { label: "Présence moyenne", value: `${attendanceRate}%`, detail: `${checked} pointages confirmés`, icon: TrendingUp },
     { label: "Sessions analysées", value: completed.length, detail: `période ${period === "7D" ? "7 jours" : period === "30D" ? "30 jours" : "180 jours"}`, icon: CalendarCheck },
     { label: "Participations attendues", value: expected, detail: "sur les séances terminées", icon: Users },
-    { label: "Retards confirmés", value: lateCount, detail: "issus des pointages Neon", icon: ClockAlert },
+    { label: "Retards confirmés", value: lateCount, detail: "issus des pointages enregistrés", icon: ClockAlert },
   ];
 
   return (

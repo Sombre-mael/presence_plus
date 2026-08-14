@@ -8,6 +8,7 @@ import type {
   TeacherSessionInput,
 } from "@/types/admin";
 import { academicDateTimeKey, academicMonth, currentAcademicDate, currentAcademicDateTimeKey } from "./academic-calendar";
+import { QR_ROTATION_MS } from "./qr-constants";
 
 const sessionSchema = z.object({
   name: z.string().trim().max(120, "Maximum 120 caractères.").optional(),
@@ -256,14 +257,14 @@ export function getTeacherStats(state: AcademicDataState, teacherId: string) {
 }
 
 export function createQrToken(sessionId: string, now = Date.now()) {
-  const windowId = Math.floor(now / 30_000);
+  const windowId = Math.floor(now / QR_ROTATION_MS);
   let hash = 0;
   for (const character of `${sessionId}:${windowId}`) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
   return {
     value: `PP-${hash.toString(36).toUpperCase().padStart(7, "0")}`,
-    expiresAt: (windowId + 1) * 30_000,
+    expiresAt: (windowId + 1) * QR_ROTATION_MS,
   };
 }
 

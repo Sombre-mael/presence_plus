@@ -146,12 +146,12 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       setHydrated(true);
       setSyncStatus("synced");
       setLastSyncedAt(result.syncedAt);
-      if (announce) notify("Données rechargées depuis Neon.");
+      if (announce) notify("Données actualisées.");
     } catch {
       if (sequence !== reloadSequence.current) return;
       setHydrated(true);
       setSyncStatus("error");
-      notifyError("Neon est momentanément indisponible. Réessayez dans un instant.");
+      notifyError("Le service de données est momentanément indisponible. Réessayez dans un instant.");
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
     }
@@ -230,7 +230,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       return result;
     } catch {
       setSyncStatus("error");
-      const result = { ok: false, message: "La mutation n’a pas pu être confirmée par Neon." } as AcademicActionResult<T>;
+      const result = { ok: false, message: "La modification n’a pas pu être confirmée." } as AcademicActionResult<T>;
       notifyError(result.message);
       return result;
     } finally {
@@ -297,7 +297,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       return {
         ok: false,
         code: "NETWORK_ERROR",
-        message: "Impossible de vérifier le code auprès de Neon. Vérifiez votre connexion puis réessayez.",
+        message: "Impossible de vérifier le code. Vérifiez votre connexion puis réessayez.",
       } as const;
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
@@ -310,14 +310,14 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       const result = await confirmStudentCheckInAction(input);
       if (result.ok) mutationRevision.current += 1;
       if (result.ok && result.patch) setState((current) => ({ ...current, ...result.patch }));
-      if (result.ok) notify(result.alreadyRecorded ? "Votre présence était déjà enregistrée." : "Présence confirmée dans Neon.");
+      if (result.ok) notify(result.alreadyRecorded ? "Votre présence était déjà enregistrée." : "Présence enregistrée avec succès.");
       return result;
     } catch {
       setSyncStatus("error");
       return {
         ok: false,
         code: "NETWORK_ERROR",
-        message: "Neon n’a pas confirmé le pointage. Votre présence n’a pas été modifiée; réessayez.",
+        message: "Le pointage n’a pas pu être confirmé. Votre présence n’a pas été modifiée; réessayez.",
       } as const;
     } finally {
       setPendingCount((count) => Math.max(0, count - 1));
@@ -378,7 +378,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       {(!hydrated || pendingCount > 0) && (
         <div className="pointer-events-none fixed bottom-4 left-4 z-[80] flex items-center gap-2 bg-foreground px-3 py-2 text-xs text-background">
           <RotateCcw className="size-3.5 animate-spin" />
-          {!hydrated ? "Connexion à Neon" : "Synchronisation"}
+          {!hydrated ? "Chargement des données" : "Synchronisation"}
         </div>
       )}
       {hydrated && pendingCount === 0 && syncStatus === "error" && (

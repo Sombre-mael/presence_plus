@@ -1,7 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { QR_PREVIEW_MS, QR_ROTATION_MS } from "@/lib/qr-constants";
 
-const WINDOW_MS = 30_000;
-const PREVIEW_MS = 60_000;
 type CheckInSource = "QR" | "STUDENT_CODE";
 
 function secret() {
@@ -25,13 +24,13 @@ function tokenForWindow(sessionId: string, window: number) {
 }
 
 export function createServerQrToken(sessionId: string, now = Date.now()) {
-  const window = Math.floor(now / WINDOW_MS);
-  const expiresAt = (window + 1) * WINDOW_MS;
+  const window = Math.floor(now / QR_ROTATION_MS);
+  const expiresAt = (window + 1) * QR_ROTATION_MS;
   return { value: tokenForWindow(sessionId, window), expiresAt };
 }
 
 export function matchesServerQrToken(sessionId: string, token: string, now = Date.now()) {
-  const window = Math.floor(now / WINDOW_MS);
+  const window = Math.floor(now / QR_ROTATION_MS);
   return [window, window - 1].some((candidate) =>
     secureEqual(tokenForWindow(sessionId, candidate), token.trim().toUpperCase()),
   );
@@ -44,7 +43,7 @@ export function createPreviewReceipt(
   source: CheckInSource,
   now = Date.now(),
 ) {
-  const expiresAt = now + PREVIEW_MS;
+  const expiresAt = now + QR_PREVIEW_MS;
   const signature = sign(`preview:${sessionId}:${studentId}:${token}:${source}:${expiresAt}`);
   return { expiresAt, receipt: `${expiresAt}.${signature}` };
 }

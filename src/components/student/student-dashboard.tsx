@@ -56,7 +56,7 @@ export function StudentDashboard() {
       {stats.missingCount > 0 && (
         <div className="flex gap-3 border border-sky-200 bg-sky-50 p-4 text-sky-950">
           <ShieldAlert className="size-5 shrink-0" />
-          <div><p className="text-sm font-semibold">{stats.missingCount} résultat(s) à vérifier</p><p className="mt-1 text-xs leading-5 text-sky-900/75">Ces séances sont clôturées mais aucune présence Neon n’est associée à votre profil. Elles ne sont pas comptées dans votre taux.</p></div>
+          <div><p className="text-sm font-semibold">{stats.missingCount} résultat(s) à vérifier</p><p className="mt-1 text-xs leading-5 text-sky-900/75">Ces séances sont clôturées mais aucun résultat n’est associé à votre profil. Elles ne sont pas comptées dans votre taux.</p></div>
         </div>
       )}
 

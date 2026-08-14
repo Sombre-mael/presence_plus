@@ -169,7 +169,7 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle, syn
           <div>
             <p className="text-xs font-medium">Données académiques</p>
             <p className={cn("text-xs", syncStatus === "error" ? "text-red-600" : "text-muted-foreground")}>
-              {syncStatus === "error" ? "Synchronisation interrompue" : syncStatus === "syncing" ? "Synchronisation en cours" : "Synchronisées avec Neon"}
+              {syncStatus === "error" ? "Synchronisation interrompue" : syncStatus === "syncing" ? "Synchronisation en cours" : "Données à jour"}
             </p>
           </div>
         </div>}

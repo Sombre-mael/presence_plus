@@ -14,7 +14,7 @@ export function prismaMutationFailure(error: unknown, fallback: string): Mutatio
     if (target.includes("matricule")) return { ok: false, message: "Ce matricule est déjà utilisé.", fieldErrors: { matricule: "Matricule déjà utilisé." } };
     if (target.includes("code")) return { ok: false, message: "Ce code de cours est déjà utilisé.", fieldErrors: { code: "Code déjà utilisé." } };
     if (target.includes("name")) return { ok: false, message: "Ce nom est déjà utilisé.", fieldErrors: { name: "Nom déjà utilisé." } };
-    return { ok: false, message: "Une donnée identique existe déjà dans Neon." };
+    return { ok: false, message: "Une donnée identique existe déjà." };
   }
   if (code === "P2003") return { ok: false, message: "Cette opération est bloquée par des données historiques liées." };
   if (code === "P2025") return { ok: false, message: "Cet élément n’existe plus. Rechargez les données." };

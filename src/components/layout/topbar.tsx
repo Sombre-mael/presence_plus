@@ -145,7 +145,7 @@ export function Topbar({
             {onReloadData && (
               <DropdownMenuItem onSelect={onReloadData}>
                 <RotateCcw />
-                Recharger depuis Neon
+                Actualiser les données
               </DropdownMenuItem>
             )}
             <DropdownMenuItem asChild>

@@ -8,6 +8,7 @@ import type {
 } from "@/types/student";
 import { createQrToken, deriveAttendanceStatus } from "./academic-domain";
 import { academicDateTimeKey, currentAcademicDate, currentAcademicDateTimeKey } from "./academic-calendar";
+import { QR_ROTATION_MS } from "./qr-constants";
 
 function sessionTeacherId(state: AcademicDataState, courseId: string) {
   return state.courses.find((course) => course.id === courseId)?.teacherId;
@@ -98,7 +99,7 @@ function parseQrPayload(raw: string) {
 }
 
 function tokenMatches(sessionId: string, token: string, now: number) {
-  return [createQrToken(sessionId, now), createQrToken(sessionId, now - 30_000)]
+  return [createQrToken(sessionId, now), createQrToken(sessionId, now - QR_ROTATION_MS)]
     .some((candidate) => candidate.value === token);
 }
 

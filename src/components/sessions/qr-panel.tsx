@@ -8,6 +8,7 @@ import { getQrTokenAction } from "@/actions/academic.actions";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { QR_ROTATION_SECONDS } from "@/lib/qr-constants";
 
 export function QrPanel({ sessionId }: { sessionId: string }) {
   const { state, viewerId } = useAcademicData();
@@ -42,7 +43,7 @@ export function QrPanel({ sessionId }: { sessionId: string }) {
         if (!cancelled) {
           expiresRef.current = Number.POSITIVE_INFINITY;
           setToken(undefined);
-          setError("Neon est momentanément indisponible. Le dernier code a été retiré par sécurité.");
+          setError("Le service de pointage est momentanément indisponible. Le dernier code a été retiré par sécurité.");
         }
       } finally {
         refreshingRef.current = false;
@@ -93,7 +94,7 @@ export function QrPanel({ sessionId }: { sessionId: string }) {
       <p className="metric-number mt-6 text-2xl font-semibold tracking-normal">{token.value}</p>
       <div className="mx-auto mt-3 max-w-sm">
         <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Nouveau code dans</span><span className="metric-number font-semibold text-foreground">{seconds}s</span></div>
-        <div className="mt-2 h-1.5 bg-muted"><div className="h-full bg-primary transition-[width] duration-1000" style={{ width: `${seconds / 30 * 100}%` }} /></div>
+        <div className="mt-2 h-1.5 bg-muted"><div className="h-full bg-primary transition-[width] duration-1000" style={{ width: `${seconds / QR_ROTATION_SECONDS * 100}%` }} /></div>
       </div>
       <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-muted-foreground">Les étudiants peuvent scanner le QR ou saisir le code affiché. Chaque code est signé et validé par le serveur.</p>
       <div className="mt-6 flex flex-wrap justify-center gap-2 print:hidden">

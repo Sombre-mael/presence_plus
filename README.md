@@ -39,7 +39,7 @@ Presence Plus centralise le cycle complet d'une présence académique :
 6. l'étudiant peut demander une correction motivée ;
 7. l'administration consulte les résultats, statistiques, exports et traces d'activité.
 
-Toutes les informations métier sont confirmées par la base Neon avant d'être présentées comme enregistrées dans l'interface.
+Toutes les informations métier sont confirmées par la base de données avant d'être présentées comme enregistrées dans l'interface.
 
 ## Ce que Presence Plus apporte
 
@@ -121,18 +121,18 @@ Presence Plus applique plusieurs règles afin de protéger la cohérence des don
 
 ## Exploitation et accès
 
-Les parcours administrateur, enseignant et étudiant utilisent Prisma et Neon comme source de vérité. L'accès est assuré par Auth.js avec des sessions de huit heures, un contrôle du rôle côté serveur et un registre Neon permettant de révoquer les appareils connectés.
+Les parcours administrateur, enseignant et étudiant utilisent Prisma et PostgreSQL comme source de vérité. L'accès est assuré par Auth.js avec des sessions de huit heures, un contrôle du rôle côté serveur et un registre de sessions permettant de révoquer les appareils connectés.
 
 Il n'existe pas d'inscription publique. Le premier administrateur est créé par une commande contrôlée, puis l'administration invite les enseignants et étudiants. L'activation peut utiliser un lien envoyé par e-mail ou un code à usage unique remis directement à l'utilisateur. L'e-mail reste facultatif pour un étudiant disposant d'un matricule.
 
-Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un secret Auth dédié, d'une base Neon migrée et d'un domaine d'envoi Resend vérifié. Le mode d'e-mail simulé est automatiquement refusé sur Vercel en production.
+Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un secret Auth dédié, d'une base PostgreSQL migrée et d'un domaine d'envoi Resend vérifié. Le mode d'e-mail simulé est automatiquement refusé sur Vercel en production.
 
 ## Technologies principales
 
 - **Next.js 16** et React 19 pour l'application web ;
 - **TypeScript** pour les contrats et la logique applicative ;
 - **Prisma 7** pour l'accès aux données ;
-- **Neon PostgreSQL** comme base de données ;
+- **PostgreSQL** comme base de données ;
 - **Auth.js** et bcrypt pour les connexions et mots de passe ;
 - **Tailwind CSS 4** et composants UI réutilisables pour l'interface ;
 - **Motion** pour les transitions et micro-interactions ;
@@ -146,7 +146,7 @@ Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un 
 
 - Node.js `20.19` ou plus récent ;
 - pnpm ;
-- une base PostgreSQL Neon accessible.
+- une base PostgreSQL accessible.
 
 ### Installation
 
@@ -208,7 +208,7 @@ pnpm db:seed
 
 L'application est ensuite disponible sur [http://localhost:3000](http://localhost:3000).
 
-> Le seed refuse de s'exécuter en production. Ne l'utilisez jamais sur une base Neon partagée contenant des données réelles.
+> Le seed refuse de s'exécuter en production. Ne l'utilisez jamais sur une base partagée contenant des données réelles.
 
 ## Vérifier le projet
 
@@ -238,7 +238,7 @@ e2e/              Parcours Playwright
 
 ## Déploiement
 
-Le déploiement de production utilise Vercel pour l'application et Neon pour PostgreSQL. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
+Le déploiement de production utilise Vercel pour l'application et PostgreSQL pour les données. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
 
 ## Licence
 

@@ -7,7 +7,7 @@ describe("réponses API privées", () => {
     expect(PRIVATE_RESPONSE_HEADERS["Cache-Control"]).toContain("no-store");
   });
 
-  it("distingue une panne Neon d’une erreur applicative", async () => {
+  it("distingue une panne de données d’une erreur applicative", async () => {
     const unavailable = apiFailure(new Error("Can't reach database server"));
     expect(unavailable.status).toBe(503);
     expect(unavailable.headers.get("Cache-Control")).toContain("no-store");
