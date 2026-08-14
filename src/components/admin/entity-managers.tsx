@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Check, Copy, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, ShieldOff, Trash2, UserRound } from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, ShieldOff, Trash2, UserRound } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -181,6 +182,8 @@ function DetailLine({ label, children }: { label: string; children: ReactNode })
 function AccessCredentialDialog({ credential, onClose }: { credential?: AuthAccessCredential; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   if (!credential) return null;
+  const activation = credential.kind === "INVITATION";
+  const workflowPath = activation ? "/activate-account" : "/reset-password";
   const delivery = credential.deliveryStatus === "ACCEPTED" ? "E-mail accepté par le service d’envoi"
     : credential.deliveryStatus === "SIMULATED" ? "Code à remettre directement"
       : credential.deliveryStatus === "FAILED" ? "Échec de l’envoi par e-mail"
@@ -189,18 +192,47 @@ function AccessCredentialDialog({ credential, onClose }: { credential?: AuthAcce
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Code à remettre à l’utilisateur</DialogTitle>
-          <DialogDescription>Ce code ne sera plus affiché après la fermeture. Un nouveau code invalidera celui-ci.</DialogDescription>
+          <DialogTitle>{activation ? "Accès initial à remettre à l’utilisateur" : "Récupération à remettre à l’utilisateur"}</DialogTitle>
+          <DialogDescription>Ce code ne sera plus affiché après la fermeture. Un nouveau code invalidera immédiatement celui-ci.</DialogDescription>
         </DialogHeader>
-        <div className="border bg-muted/30 p-5 text-center">
-          <p className="font-mono text-2xl font-semibold tracking-normal">{credential.manualCode}</p>
+        <div className="grid gap-3 border bg-muted/30 p-5">
+          <div>
+            <p className="text-xs text-muted-foreground">Identifiant</p>
+            <p className="mt-1 break-all font-medium">{credential.identifier}</p>
+          </div>
+          <div className="border-t pt-3">
+            <p className="text-xs text-muted-foreground">Code à usage unique</p>
+            <p className="mt-1 font-mono text-2xl font-semibold tracking-normal">{credential.manualCode}</p>
+          </div>
           <p className="mt-2 text-xs text-muted-foreground">Expire le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lubumbashi" }).format(new Date(credential.expiresAt))}</p>
         </div>
+        <Alert>
+          <AlertTitle>{activation ? "Le code n’est pas un mot de passe" : "Le code ouvre la récupération"}</AlertTitle>
+          <AlertDescription>
+            {activation
+              ? "L’utilisateur doit ouvrir la page d’activation, saisir son identifiant et ce code, puis choisir son propre mot de passe. Il pourra ensuite se connecter."
+              : "L’utilisateur doit ouvrir la page de récupération, saisir son identifiant et ce code, puis choisir un nouveau mot de passe."}
+          </AlertDescription>
+        </Alert>
         <Alert><AlertDescription>{delivery}. Le code reste utilisable jusqu’à son expiration.</AlertDescription></Alert>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Fermer</Button>
-          <Button onClick={async () => { await navigator.clipboard.writeText(credential.manualCode); setCopied(true); }}>
-            {copied ? <Check /> : <Copy />}{copied ? "Code copié" : "Copier le code"}
+          <Button variant="outline" asChild>
+            <Link href={workflowPath} target="_blank" rel="noreferrer">Ouvrir la page <ExternalLink /></Link>
+          </Button>
+          <Button onClick={async () => {
+            const instructions = [
+              "Presence Plus",
+              activation ? "Activation de votre compte" : "Récupération de votre compte",
+              `Page : ${window.location.origin}${workflowPath}`,
+              `Identifiant : ${credential.identifier}`,
+              `Code : ${credential.manualCode}`,
+              activation ? "Choisissez ensuite votre mot de passe, puis connectez-vous." : "Choisissez ensuite votre nouveau mot de passe.",
+            ].join("\n");
+            await navigator.clipboard.writeText(instructions);
+            setCopied(true);
+          }}>
+            {copied ? <Check /> : <Copy />}{copied ? "Instructions copiées" : "Copier les instructions"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -493,7 +525,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
         </SheetContent>
       </Sheet>
       <UserFormDialog key={`${editing?.id ?? "new"}-${formOpen}`} open={formOpen} onOpenChange={setFormOpen} user={editing} onCredential={setCredential} />
-      <AccessCredentialDialog credential={credential} onClose={() => setCredential(undefined)} />
+      <AccessCredentialDialog key={credential?.manualCode ?? "none"} credential={credential} onClose={() => setCredential(undefined)} />
       {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.name} ?`} description="Cette action est définitive et sera refusée si des données dépendent de ce compte." onDelete={() => deleteUser(selected.id)} onDeleted={() => setSelectedId(undefined)} />}
     </div>
   );

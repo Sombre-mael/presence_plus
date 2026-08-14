@@ -151,7 +151,9 @@ test("un étudiant sans e-mail active son compte avec son matricule et un code",
   const code = await createAuthCodeFixture(user.id, "INVITATION");
   const password = "Silex!Boussole8-Lumiere-Mangue";
   try {
-    await page.goto("/activate-account");
+    await page.goto("/login");
+    await page.getByRole("link", { name: "Activer mon compte avec un code" }).click();
+    await expect(page).toHaveURL(/\/activate-account/);
     await page.getByLabel("E-mail ou matricule").fill(user.matricule);
     await page.getByLabel("Code à usage unique").fill(code);
     await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);

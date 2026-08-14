@@ -6,7 +6,8 @@ import { getAuthenticatedViewer, getViewerForRole } from "@/lib/authenticated-vi
 import {
   clearTokenVerificationThrottle,
   consumeRecoveryAttempt,
-  consumeTokenVerificationAttempt,
+  isAuthThrottled,
+  registerAuthFailure,
 } from "@/lib/auth-throttle.server";
 import { currentClientIp } from "@/lib/auth-request.server";
 import { inspectAuthCode, inspectAuthToken, issueAuthToken } from "@/lib/auth-token.server";
@@ -36,8 +37,16 @@ function passwordValidation(password: string, confirmation: string, identity: st
 function accessCredentialValue(
   issued: { manualCode: string; expiresAt: Date },
   deliveryStatus: AuthAccessCredential["deliveryStatus"],
+  user: { email: string | null; matricule: string | null },
+  kind: AuthAccessCredential["kind"],
 ): AuthAccessCredential {
-  return { manualCode: issued.manualCode, expiresAt: issued.expiresAt.toISOString(), deliveryStatus };
+  return {
+    kind,
+    identifier: user.email ?? user.matricule ?? "",
+    manualCode: issued.manualCode,
+    expiresAt: issued.expiresAt.toISOString(),
+    deliveryStatus,
+  };
 }
 
 export async function requestPasswordResetAction(identifierValue: string): Promise<AuthActionResult> {
@@ -80,14 +89,24 @@ async function consumeCredentialAndSetPassword(
     ? `token:${hashOpaqueToken(credential.token)}`
     : `code:${normalizeIdentifier(credential.identifier ?? "")}`;
   const ip = await currentClientIp();
-  if (!await consumeTokenVerificationAttempt(throttleKey, ip)) {
+  if (await isAuthThrottled("TOKEN_VERIFY", throttleKey, ip)) {
     return { ok: false, message: "Trop de tentatives. Réessayez dans quinze minutes." };
   }
   const inspected = credential.token
     ? await inspectAuthToken(credential.token, type)
     : await inspectAuthCode(credential.identifier ?? "", credential.manualCode ?? "", type);
   if (!inspected || inspected.user.status !== "ACTIVE") {
-    return { ok: false, message: "Ce lien ou ce code est invalide, expiré ou déjà utilisé." };
+    await registerAuthFailure("TOKEN_VERIFY", throttleKey, ip);
+    return {
+      ok: false,
+      message: "Ce lien ou ce code est invalide, expiré ou déjà utilisé.",
+      ...(!credential.token ? {
+        fieldErrors: {
+          identifier: "Vérifiez l’e-mail ou le matricule remis par l’administration.",
+          manualCode: "Vérifiez le code d’activation à usage unique.",
+        },
+      } : {}),
+    };
   }
   if (type === "PASSWORD_RESET" && await bcrypt.compare(password, inspected.user.passwordHash)) {
     return { ok: false, message: "Choisissez un mot de passe différent.", fieldErrors: { password: "Le nouveau mot de passe doit être différent de l’actuel." } };
@@ -217,7 +236,7 @@ export async function revokeOwnSessionsAction(currentPassword: string): Promise<
 async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWORD_RESET"): Promise<AuthActionResult<AuthAccessCredential>> {
   const viewer = await getViewerForRole("ADMIN");
   if (!viewer) return { ok: false, message: "Accès administrateur requis." };
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, status: true, activatedAt: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, matricule: true, status: true, activatedAt: true } });
   if (!user || user.status !== "ACTIVE") return { ok: false, message: "Ce compte est introuvable ou inactif." };
   if (type === "INVITATION" && user.activatedAt) return { ok: false, message: "Ce compte est déjà activé." };
   const issued = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
@@ -235,7 +254,7 @@ async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWO
       : delivery.status === "SIMULATED"
         ? "Code généré pour remise directe à l’utilisateur."
         : "Code généré et e-mail accepté par le service d’envoi.";
-  return { ok: true, message, value: accessCredentialValue(issued, delivery.status) };
+  return { ok: true, message, value: accessCredentialValue(issued, delivery.status, user, type) };
 }
 
 export async function resendInvitationAction(userId: string) {

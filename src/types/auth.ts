@@ -9,6 +9,8 @@ export type AccountAccessState =
 export type AuthDeliveryStatus = "NOT_APPLICABLE" | "SIMULATED" | "ACCEPTED" | "FAILED";
 
 export interface AuthAccessCredential {
+  kind: "INVITATION" | "PASSWORD_RESET";
+  identifier: string;
   manualCode: string;
   expiresAt: string;
   deliveryStatus: AuthDeliveryStatus;

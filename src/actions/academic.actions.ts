@@ -138,7 +138,7 @@ function forbidden(): AcademicActionResult {
 
 async function createAndSendInvitation(userId: string, actorId: string) {
   const issued = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true, matricule: true } });
     if (!user) throw new Error("Utilisateur introuvable.");
     const token = await issueAuthToken(userId, "INVITATION", tx);
     await audit(actorId, "SEND_INVITATION", "User", userId, undefined, tx);
@@ -146,6 +146,8 @@ async function createAndSendInvitation(userId: string, actorId: string) {
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
   const delivery = await deliverAuthEmail(issued.token.id, issued.user, "INVITATION", issued.token.token, actorId);
   return {
+    kind: "INVITATION",
+    identifier: issued.user.email ?? issued.user.matricule ?? "",
     manualCode: issued.token.manualCode,
     expiresAt: issued.token.expiresAt.toISOString(),
     deliveryStatus: delivery.status,
@@ -257,6 +259,7 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
   if (!validation.ok) return failure(validation);
   const id = randomUUID();
   const email = input.email?.trim().toLowerCase() || null;
+  const matricule = input.role === "STUDENT" ? input.matricule?.trim().toUpperCase() || null : null;
   const passwordHash = await bcrypt.hash(unusablePassword(), 12);
   let invitation: Awaited<ReturnType<typeof issueAuthToken>> | null;
   try {
@@ -270,7 +273,7 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
           status: input.status,
           activatedAt: null,
           mustChangePassword: true,
-          matricule: input.role === "STUDENT" ? input.matricule?.trim().toUpperCase() : null,
+          matricule,
           passwordHash,
           ...(input.role === "STUDENT" && input.promotionId
             ? { promotion: { connect: { id: input.promotionId } } }
@@ -293,6 +296,8 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
       : `${validation.message} ${delivery.status === "SIMULATED" ? "Le code est prêt à être remis directement à l’utilisateur." : "L’envoi a été accepté par le service d’e-mail."}`;
   return success(viewer, message, ["users", "auditLogs"], {
     id,
+    kind: "INVITATION",
+    identifier: email ?? matricule ?? "",
     manualCode: invitation.manualCode,
     expiresAt: invitation.expiresAt.toISOString(),
     deliveryStatus: delivery.status,

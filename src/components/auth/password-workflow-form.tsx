@@ -53,14 +53,21 @@ export function PasswordWorkflowForm({ workflow, token, tokenValid = Boolean(tok
       {workflow === "change" ? <PasswordInput id="current-password" name="currentPassword" label="Mot de passe actuel" autoComplete="current-password" error={result?.fieldErrors?.currentPassword} disabled={pending} /> : null}
       {workflow !== "change" && !tokenValid ? (
         <div className="space-y-4 border bg-muted/30 p-4">
+          {workflow === "activate" ? (
+            <Alert>
+              <AlertDescription>Ce code n’est pas votre mot de passe. Il autorise uniquement la création de votre premier mot de passe sur cette page.</AlertDescription>
+            </Alert>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="identifier">E-mail ou matricule</Label>
-            <Input id="identifier" name="identifier" autoComplete="username" aria-invalid={Boolean(result?.fieldErrors?.identifier)} disabled={pending} />
+            <Input id="identifier" name="identifier" autoComplete="username" aria-invalid={Boolean(result?.fieldErrors?.identifier)} aria-describedby={result?.fieldErrors?.identifier ? "identifier-error" : undefined} disabled={pending} required autoFocus />
+            {result?.fieldErrors?.identifier ? <p id="identifier-error" className="text-xs text-destructive">{result.fieldErrors.identifier}</p> : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="manualCode">Code à usage unique</Label>
-            <Input id="manualCode" name="manualCode" autoComplete="one-time-code" inputMode="text" spellCheck={false} className="font-mono uppercase" placeholder="ABCDE-FGHJK" aria-invalid={Boolean(result?.fieldErrors?.manualCode)} disabled={pending} />
-            <p className="text-xs text-muted-foreground">Le code est fourni par l’administration et peut être utilisé une seule fois.</p>
+            <Input id="manualCode" name="manualCode" autoComplete="one-time-code" inputMode="text" spellCheck={false} className="font-mono uppercase" placeholder="ABCDE-FGHJK" aria-invalid={Boolean(result?.fieldErrors?.manualCode)} aria-describedby={result?.fieldErrors?.manualCode ? "manual-code-error" : "manual-code-help"} disabled={pending} maxLength={11} required />
+            {result?.fieldErrors?.manualCode ? <p id="manual-code-error" className="text-xs text-destructive">{result.fieldErrors.manualCode}</p> : null}
+            <p id="manual-code-help" className="text-xs text-muted-foreground">Le code est fourni par l’administration, reste valable 48 heures pour une activation et ne peut être utilisé qu’une fois.</p>
           </div>
         </div>
       ) : null}

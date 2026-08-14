@@ -80,12 +80,6 @@ export async function consumeRecoveryAttempt(identifier: string, ip: string, now
   return true;
 }
 
-export async function consumeTokenVerificationAttempt(identifier: string, ip: string, now = new Date()) {
-  if (await isAuthThrottled("TOKEN_VERIFY", identifier, ip, now)) return false;
-  await registerAuthFailure("TOKEN_VERIFY", identifier, ip, now);
-  return true;
-}
-
 export async function clearLoginThrottle(identifier: string, ip: string) {
   const key = keys(identifier, ip);
   await withDatabaseRetry(() => prisma.authThrottle.deleteMany({ where: { action: "LOGIN", keyHash: key.pair } }));

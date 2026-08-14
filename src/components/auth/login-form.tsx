@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import { Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,12 @@ export function LoginForm({ callbackUrl, message }: { callbackUrl?: string; mess
       <Button type="submit" className="h-11 w-full" disabled={pending}>
         {pending ? <><LoaderCircle className="animate-spin" />Vérification...</> : "Se connecter"}
       </Button>
+      <div className="space-y-3 border-t pt-4 text-center">
+        <p className="text-xs leading-5 text-muted-foreground">Première connexion ? Le code remis par l’administration doit d’abord servir à créer votre mot de passe.</p>
+        <Button type="button" variant="outline" className="h-11 w-full" asChild>
+          <Link href="/activate-account"><KeyRound />Activer mon compte avec un code</Link>
+        </Button>
+      </div>
       <p className="text-center text-xs leading-5 text-muted-foreground">L’accès est créé par votre établissement. Il n’y a pas d’inscription publique.</p>
     </motion.form>
   );
