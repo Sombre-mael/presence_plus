@@ -46,6 +46,18 @@ if (process.env.VERCEL_ENV === "production") {
       throw new Error("AUTH_EMAIL_FROM doit utiliser un domaine d’envoi vérifié.");
     }
   }
+  const pushVariables = ["NEXT_PUBLIC_VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"];
+  const configuredPushVariables = pushVariables.filter((name) => process.env[name]?.trim());
+  if (configuredPushVariables.length > 0 && configuredPushVariables.length !== pushVariables.length) {
+    throw new Error("La configuration Web Push doit fournir la clé VAPID publique, la clé privée et le sujet.");
+  }
+  if (
+    process.env.VAPID_SUBJECT
+    && !process.env.VAPID_SUBJECT.startsWith("mailto:")
+    && !process.env.VAPID_SUBJECT.startsWith("https://")
+  ) {
+    throw new Error("VAPID_SUBJECT doit utiliser mailto: ou https://.");
+  }
 }
 
 const nextConfig: NextConfig = {

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthSessionProvider } from "@/components/auth/session-provider";
@@ -34,6 +36,8 @@ export default function RootLayout({
       <body className="min-h-full">
         <AuthSessionProvider><TooltipProvider>{children}</TooltipProvider></AuthSessionProvider>
         <PwaRegistration currentVersion={getAppVersion()} />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

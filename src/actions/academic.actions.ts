@@ -8,6 +8,7 @@ import {
   getAcademicPatch,
   getAcademicSnapshot,
   toAcademicDate,
+  toAcademicTime,
   type AcademicCollection,
   type AcademicPatch,
 } from "@/lib/academic-repository";
@@ -52,13 +53,14 @@ import type {
   CorrectionResolutionInput,
   StudentCheckInInput,
 } from "@/types/student";
-import type { AttendanceSource } from "@/types";
+import type { AttendanceSource, AttendanceStatus } from "@/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { addAcademicDays } from "@/lib/academic-calendar";
 import { prismaMutationFailure } from "@/lib/prisma-errors";
 import { isWithinSessionStartWindow } from "@/lib/session-lifecycle";
 import { SERIALIZABLE_TRANSACTION_OPTIONS } from "@/lib/transaction-options";
 import type { AuthAccessCredential } from "@/types/auth";
+import { createUserNotifications, deliverNotificationPush } from "@/lib/notifications.server";
 
 export type AcademicActionResult<T = undefined> = MutationResult & {
   patch?: AcademicPatch;
@@ -584,7 +586,7 @@ export async function createSessionAction(input: TeacherSessionInput) {
   const course = state.courses.find((item) => item.id === input.courseId)!;
   const start = fromAcademicDateTime(input.date, input.startTime);
   const end = fromAcademicDateTime(input.date, input.endTime);
-  const session = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const available = await tx.course.findFirst({ where: { id: course.id, teacherId: viewer.id, active: true } });
     if (!available) return null;
     const conflict = await tx.session.findFirst({
@@ -597,7 +599,7 @@ export async function createSessionAction(input: TeacherSessionInput) {
       select: { id: true },
     });
     if (conflict) return null;
-    return tx.session.create({
+    const session = await tx.session.create({
       data: {
         name: input.name?.trim() || `${course.name} - séance`,
         description: input.description?.trim() || null,
@@ -610,10 +612,24 @@ export async function createSessionAction(input: TeacherSessionInput) {
         courses: { connect: { id: course.id } },
       },
     });
+    const students = await tx.user.findMany({
+      where: { role: "STUDENT", status: "ACTIVE", promotionId: course.promotionId },
+      select: { id: true },
+    });
+    const notificationIds = await createUserNotifications(tx, students.map((student) => student.id), {
+      kind: "SESSION_SCHEDULED",
+      title: "Nouvelle séance planifiée",
+      body: `${course.code} est prévue le ${toAcademicDate(start)} à ${toAcademicTime(start)} en salle ${input.room.trim()}.`,
+      href: "/student/schedule",
+      dedupeKey: `session-scheduled:${session.id}`,
+      expiresAt: end,
+    });
+    return { session, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  if (!session) return failure({ ok: false, message: "Le cours est inactif ou ce créneau vient d'être réservé." });
-  await audit(viewer.id, "CREATE_SESSION", "Session", session.id);
-  return success(viewer, validation.message, ["sessions"], { id: session.id });
+  if (!outcome) return failure({ ok: false, message: "Le cours est inactif ou ce créneau vient d'être réservé." });
+  await audit(viewer.id, "CREATE_SESSION", "Session", outcome.session.id);
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
+  return success(viewer, validation.message, ["sessions"], { id: outcome.session.id });
 }
 
 export async function updateSessionAction(id: string, input: TeacherSessionInput) {
@@ -629,7 +645,7 @@ export async function updateSessionAction(id: string, input: TeacherSessionInput
   const course = state.courses.find((item) => item.id === input.courseId)!;
   const start = fromAcademicDateTime(input.date, input.startTime);
   const end = fromAcademicDateTime(input.date, input.endTime);
-  const updated = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const conflict = await tx.session.findFirst({
       where: {
         id: { not: id },
@@ -640,15 +656,29 @@ export async function updateSessionAction(id: string, input: TeacherSessionInput
       },
       select: { id: true },
     });
-    if (conflict) return false;
+    if (conflict) return null;
     const result = await tx.session.updateMany({
       where: { id, teacherId: viewer.id, status: "SCHEDULED" },
       data: { name: input.name?.trim() || current.name || current.courseName, description: input.description?.trim() || null, scheduledStartAt: start, scheduledEndAt: end, room: input.room.trim(), lateThresholdMinutes: input.lateThresholdMinutes, courseId: course.id, promotionId: course.promotionId },
     });
-    return result.count === 1;
+    if (result.count !== 1) return null;
+    const students = await tx.user.findMany({
+      where: { role: "STUDENT", status: "ACTIVE", promotionId: course.promotionId },
+      select: { id: true },
+    });
+    const notificationIds = await createUserNotifications(tx, students.map((student) => student.id), {
+      kind: "SESSION_UPDATED",
+      title: "Séance modifiée",
+      body: `${course.code} est désormais prévue le ${toAcademicDate(start)} à ${toAcademicTime(start)} en salle ${input.room.trim()}.`,
+      href: "/student/schedule",
+      dedupeKey: `session-updated:${id}`,
+      expiresAt: end,
+    });
+    return { notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  if (!updated) return failure({ ok: false, message: "La session a changé ou le créneau vient d'être réservé." });
+  if (!outcome) return failure({ ok: false, message: "La session a changé ou le créneau vient d'être réservé." });
   await audit(viewer.id, "UPDATE_SESSION", "Session", id);
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
   return success(viewer, validation.message, ["sessions"]);
 }
 
@@ -657,11 +687,11 @@ export async function startSessionAction(id: string) {
   if (!viewer) return forbidden();
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.session.findUnique({ where: { id } });
-    if (!session || session.teacherId !== viewer.id || session.status !== "SCHEDULED") return "INVALID" as const;
+    if (!session || session.teacherId !== viewer.id || session.status !== "SCHEDULED") return { kind: "INVALID" as const, notificationIds: [] };
     const now = new Date();
-    if (!isWithinSessionStartWindow(session.scheduledStartAt, session.scheduledEndAt, now)) return "OUTSIDE_WINDOW" as const;
+    if (!isWithinSessionStartWindow(session.scheduledStartAt, session.scheduledEndAt, now)) return { kind: "OUTSIDE_WINDOW" as const, notificationIds: [] };
     const active = await tx.session.count({ where: { teacherId: viewer.id, status: "ACTIVE" } });
-    if (active) return "ACTIVE_EXISTS" as const;
+    if (active) return { kind: "ACTIVE_EXISTS" as const, notificationIds: [] };
     const students = await tx.user.findMany({
       where: { role: "STUDENT", status: "ACTIVE", promotionId: session.promotionId },
       select: { id: true },
@@ -673,12 +703,21 @@ export async function startSessionAction(id: string) {
       });
     }
     await tx.session.update({ where: { id }, data: { status: "ACTIVE", startedAt: new Date() } });
-    return "STARTED" as const;
+    const notificationIds = await createUserNotifications(tx, students.map((student) => student.id), {
+      kind: "SESSION_STARTED",
+      title: "Le pointage est ouvert",
+      body: "Votre séance vient de démarrer. Ouvrez Presence Plus pour enregistrer votre présence.",
+      href: "/student/check-in",
+      dedupeKey: `session-started:${id}`,
+      expiresAt: session.scheduledEndAt,
+    });
+    return { kind: "STARTED" as const, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  if (result === "OUTSIDE_WINDOW") return failure({ ok: false, message: "La session peut démarrer au plus tôt 30 minutes avant son horaire et avant sa fin prévue." });
-  if (result === "ACTIVE_EXISTS") return failure({ ok: false, message: "Clôturez la session active avant d'en démarrer une autre." });
-  if (result !== "STARTED") return failure({ ok: false, message: "Cette session ne peut pas être démarrée." });
+  if (result.kind === "OUTSIDE_WINDOW") return failure({ ok: false, message: "La session peut démarrer au plus tôt 30 minutes avant son horaire et avant sa fin prévue." });
+  if (result.kind === "ACTIVE_EXISTS") return failure({ ok: false, message: "Clôturez la session active avant d'en démarrer une autre." });
+  if (result.kind !== "STARTED") return failure({ ok: false, message: "Cette session ne peut pas être démarrée." });
   await audit(viewer.id, "START_SESSION", "Session", id);
+  await deliverNotificationPush(result.notificationIds).catch(() => undefined);
   return success(viewer, "Session démarrée. Le pointage est ouvert.", ["sessions"]);
 }
 
@@ -686,19 +725,36 @@ export async function cancelSessionAction(id: string, reason?: string) {
   const viewer = await viewerFor("TEACHER");
   if (!viewer) return forbidden();
   if (!reason || reason.trim().length < 5) return failure({ ok: false, message: "Le motif d'annulation doit contenir au moins 5 caractères.", fieldErrors: { reason: "Motif trop court." } });
-  const updated = await prisma.session.updateMany({
-    where: { id, teacherId: viewer.id, status: "SCHEDULED" },
-    data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: reason.trim() },
-  });
-  if (!updated.count) return failure({ ok: false, message: "Seule une session planifiée peut être annulée." });
+  const outcome = await prisma.$transaction(async (tx) => {
+    const session = await tx.session.findFirst({ where: { id, teacherId: viewer.id, status: "SCHEDULED" } });
+    if (!session) return null;
+    await tx.session.update({
+      where: { id },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: reason.trim() },
+    });
+    const students = await tx.user.findMany({
+      where: { role: "STUDENT", status: "ACTIVE", promotionId: session.promotionId },
+      select: { id: true },
+    });
+    const notificationIds = await createUserNotifications(tx, students.map((student) => student.id), {
+      kind: "SESSION_CANCELLED",
+      title: "Séance annulée",
+      body: `La séance du ${toAcademicDate(session.scheduledStartAt)} à ${toAcademicTime(session.scheduledStartAt)} a été annulée.`,
+      href: "/student/schedule",
+      dedupeKey: `session-cancelled:${id}`,
+    });
+    return { notificationIds };
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
+  if (!outcome) return failure({ ok: false, message: "Seule une session planifiée peut être annulée." });
   await audit(viewer.id, "CANCEL_SESSION", "Session", id, { reason });
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
   return success(viewer, "Session annulée.", ["sessions"]);
 }
 
 export async function completeSessionAction(id: string) {
   const viewer = await viewerFor("TEACHER");
   if (!viewer) return forbidden();
-  const missing = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const session = await tx.session.findUnique({ where: { id } });
     if (!session || session.teacherId !== viewer.id || session.status !== "ACTIVE") return null;
     const students = await tx.sessionEnrollment.findMany({ where: { sessionId: id }, select: { studentId: true } });
@@ -712,11 +768,39 @@ export async function completeSessionAction(id: string) {
       });
     }
     await tx.session.update({ where: { id }, data: { status: "COMPLETED", completedAt: new Date() } });
-    return absent.length;
+    const finalAttendances = await tx.attendance.findMany({
+      where: { sessionId: id, studentId: { in: students.map((student) => student.studentId) } },
+      select: { studentId: true, status: true },
+    });
+    const recipientsByStatus = new Map<AttendanceStatus, string[]>();
+    for (const attendance of finalAttendances) {
+      recipientsByStatus.set(attendance.status, [
+        ...(recipientsByStatus.get(attendance.status) ?? []),
+        attendance.studentId,
+      ]);
+    }
+    const statusMessages: Record<AttendanceStatus, string> = {
+      PRESENT: "Votre présence a été confirmée pour cette séance.",
+      LATE: "Votre présence a été enregistrée avec un retard.",
+      ABSENT: "Vous avez été enregistré comme absent à cette séance.",
+      EXCUSED: "Votre absence justifiée a été confirmée pour cette séance.",
+    };
+    const notificationIds: string[] = [];
+    for (const [status, studentIds] of recipientsByStatus) {
+      notificationIds.push(...await createUserNotifications(tx, studentIds, {
+        kind: "ATTENDANCE_ALERT",
+        title: "Séance clôturée",
+        body: statusMessages[status],
+        href: "/student/history",
+        dedupeKey: `session-completed:${id}`,
+      }));
+    }
+    return { missing: absent.length, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  if (missing === null) return failure({ ok: false, message: "Cette session n’est pas active." });
-  await audit(viewer.id, "COMPLETE_SESSION", "Session", id, { automaticAbsences: missing });
-  return success(viewer, `Session clôturée. ${missing} absence(s) enregistrée(s).`, ["sessions", "attendances"]);
+  if (outcome === null) return failure({ ok: false, message: "Cette session n’est pas active." });
+  await audit(viewer.id, "COMPLETE_SESSION", "Session", id, { automaticAbsences: outcome.missing });
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
+  return success(viewer, `Session clôturée. ${outcome.missing} absence(s) enregistrée(s).`, ["sessions", "attendances"]);
 }
 
 export async function saveAttendanceAction(sessionId: string, input: AttendanceInput) {
@@ -734,12 +818,23 @@ export async function saveAttendanceAction(sessionId: string, input: AttendanceI
       ? "LATE"
       : "PRESENT"
     : input.status;
-  await prisma.attendance.upsert({
-    where: { studentId_sessionId: { studentId: input.studentId, sessionId } },
-    create: { studentId: input.studentId, sessionId, status: automaticStatus, source: "MANUAL", checkedInAt, note: input.note?.trim() || null, correctionReason: session.status === "COMPLETED" ? input.correctionReason?.trim() || null : null, correctedAt: session.status === "COMPLETED" ? new Date() : null, correctedById: session.status === "COMPLETED" ? viewer.id : null },
-    update: { status: automaticStatus, source: "MANUAL", checkedInAt, note: input.note?.trim() || null, correctionReason: input.correctionReason?.trim() || null, correctedAt: session.status === "COMPLETED" ? new Date() : null, correctedById: session.status === "COMPLETED" ? viewer.id : null },
-  });
+  const notificationIds = await prisma.$transaction(async (tx) => {
+    await tx.attendance.upsert({
+      where: { studentId_sessionId: { studentId: input.studentId, sessionId } },
+      create: { studentId: input.studentId, sessionId, status: automaticStatus, source: "MANUAL", checkedInAt, note: input.note?.trim() || null, correctionReason: session.status === "COMPLETED" ? input.correctionReason?.trim() || null : null, correctedAt: session.status === "COMPLETED" ? new Date() : null, correctedById: session.status === "COMPLETED" ? viewer.id : null },
+      update: { status: automaticStatus, source: "MANUAL", checkedInAt, note: input.note?.trim() || null, correctionReason: input.correctionReason?.trim() || null, correctedAt: session.status === "COMPLETED" ? new Date() : null, correctedById: session.status === "COMPLETED" ? viewer.id : null },
+    });
+    if (session.status !== "COMPLETED") return [];
+    return createUserNotifications(tx, [input.studentId], {
+      kind: "ATTENDANCE_ALERT",
+      title: "Présence corrigée",
+      body: "Votre feuille de présence a été corrigée. Consultez votre historique pour voir le nouvel état.",
+      href: "/student/history",
+      dedupeKey: `attendance-corrected:${sessionId}:${input.studentId}`,
+    });
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
   await audit(viewer.id, existing ? "CORRECT_ATTENDANCE" : "CREATE_ATTENDANCE", "Attendance", `${sessionId}:${input.studentId}`);
+  await deliverNotificationPush(notificationIds).catch(() => undefined);
   return success(viewer, validation.message, ["attendances", "sessions"]);
 }
 
@@ -869,21 +964,45 @@ export async function createCorrectionRequestAction(input: CorrectionRequestInpu
       },
       select: { id: true },
     });
-    return { kind: "CREATED" as const, id: request.id };
+    const notificationIds = await createUserNotifications(tx, [session.teacherId], {
+      kind: "CORRECTION_REQUESTED",
+      title: "Nouvelle demande de correction",
+      body: "Un étudiant demande la vérification d’une présence.",
+      href: `/teacher/corrections?request=${request.id}`,
+      dedupeKey: `correction-requested:${request.id}`,
+    });
+    return { kind: "CREATED" as const, id: request.id, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (outcome.kind === "SESSION_MISSING") return failure({ ok: false, message: "Session introuvable." });
   if (outcome.kind === "PENDING_EXISTS") return failure({ ok: false, message: "Une demande est déjà en attente pour cette session." });
   if (outcome.kind === "STATUS_UNCHANGED") return failure({ ok: false, message: "Le statut demandé est déjà celui enregistré." });
   await audit(viewer.id, "CREATE_CORRECTION_REQUEST", "AttendanceCorrectionRequest", outcome.id);
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
   return success(viewer, validation.message, ["correctionRequests"], { id: outcome.id });
 }
 
 export async function cancelCorrectionRequestAction(id: string) {
   const viewer = await viewerFor("STUDENT");
   if (!viewer) return forbidden();
-  const updated = await prisma.attendanceCorrectionRequest.updateMany({ where: { id, studentId: viewer.id, status: "PENDING" }, data: { status: "CANCELLED" } });
-  if (!updated.count) return failure({ ok: false, message: "Cette demande ne peut plus être annulée." });
+  const outcome = await prisma.$transaction(async (tx) => {
+    const request = await tx.attendanceCorrectionRequest.findFirst({
+      where: { id, studentId: viewer.id, status: "PENDING" },
+      select: { id: true, teacherId: true },
+    });
+    if (!request) return null;
+    await tx.attendanceCorrectionRequest.update({ where: { id }, data: { status: "CANCELLED" } });
+    const notificationIds = await createUserNotifications(tx, [request.teacherId], {
+      kind: "CORRECTION_REQUESTED",
+      title: "Demande de correction annulée",
+      body: "L’étudiant a annulé sa demande de correction.",
+      href: "/teacher/corrections",
+      dedupeKey: `correction-requested:${request.id}`,
+    });
+    return { notificationIds };
+  }, SERIALIZABLE_TRANSACTION_OPTIONS);
+  if (!outcome) return failure({ ok: false, message: "Cette demande ne peut plus être annulée." });
   await audit(viewer.id, "CANCEL_CORRECTION_REQUEST", "AttendanceCorrectionRequest", id);
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
   return success(viewer, "Demande annulée.", ["correctionRequests"]);
 }
 
@@ -923,7 +1042,17 @@ export async function resolveCorrectionRequestAction(input: CorrectionResolution
       });
     }
     await tx.attendanceCorrectionRequest.update({ where: { id: request.id }, data: { status: input.decision === "APPROVE" ? "APPROVED" : "REJECTED", decisionReason: input.reason.trim(), resolvedStatus: input.decision === "APPROVE" ? finalStatus : null, resolvedById: viewer.id, resolvedAt: new Date() } });
-    return { requestId: request.id, finalStatus };
+    const approved = input.decision === "APPROVE";
+    const notificationIds = await createUserNotifications(tx, [request.studentId], {
+      kind: "CORRECTION_RESOLVED",
+      title: approved ? "Correction acceptée" : "Correction refusée",
+      body: approved
+        ? "Votre demande a été acceptée. Consultez votre historique pour voir la correction."
+        : "Votre demande a été examinée. Consultez votre historique pour voir la décision.",
+      href: "/student/history",
+      dedupeKey: `correction-resolved:${request.id}`,
+    });
+    return { requestId: request.id, finalStatus, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (!outcome) return failure({ ok: false, message: "Cette demande n’est plus disponible." });
   await audit(
@@ -933,5 +1062,6 @@ export async function resolveCorrectionRequestAction(input: CorrectionResolution
     outcome.requestId,
     input.decision === "APPROVE" ? { finalStatus: outcome.finalStatus } : undefined,
   );
+  await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
   return success(viewer, input.decision === "APPROVE" ? "Correction acceptée et appliquée." : "Demande refusée.", ["correctionRequests", "attendances", "sessions"]);
 }

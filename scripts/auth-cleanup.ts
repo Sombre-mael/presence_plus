@@ -21,6 +21,7 @@ async function main() {
   const tokenCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
   const throttleCutoff = new Date(now.getTime() - 48 * 60 * 60_000);
   const sessionCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60_000);
+  const notificationCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60_000);
 
   const tokens = await retry(() => prisma.authToken.deleteMany({
     where: { OR: [{ expiresAt: { lt: tokenCutoff } }, { usedAt: { lt: tokenCutoff } }] },
@@ -31,8 +32,24 @@ async function main() {
   const sessions = await retry(() => prisma.authSession.deleteMany({
     where: { OR: [{ expiresAt: { lt: sessionCutoff } }, { revokedAt: { lt: sessionCutoff } }] },
   }));
+  const notifications = await retry(() => prisma.notification.deleteMany({
+    where: {
+      OR: [
+        { expiresAt: { lt: now } },
+        { readAt: { lt: notificationCutoff } },
+      ],
+    },
+  }));
+  const pushSubscriptions = await retry(() => prisma.pushSubscription.deleteMany({
+    where: {
+      OR: [
+        { expiresAt: { lt: now } },
+        { revokedAt: { lt: sessionCutoff } },
+      ],
+    },
+  }));
 
-  console.info(`Nettoyage Auth termine : ${tokens.count} jeton(s), ${throttles.count} limitation(s), ${sessions.count} session(s).`);
+  console.info(`Nettoyage termine : ${tokens.count} jeton(s), ${throttles.count} limitation(s), ${sessions.count} session(s), ${notifications.count} notification(s), ${pushSubscriptions.count} abonnement(s) push.`);
 }
 
 main()

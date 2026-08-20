@@ -8,34 +8,37 @@ datasource db {
 }
 
 model User {
-  id                   String                        @id @default(cuid())
-  matricule            String?                       @unique
-  name                 String
-  email                String?                       @unique
-  passwordHash         String
-  role                 Role
-  status               UserStatus
-  activatedAt          DateTime?
-  mustChangePassword   Boolean                       @default(true)
-  passwordChangedAt    DateTime?
-  lastLoginAt          DateTime?
-  sessionVersion       Int                           @default(1)
-  createdAt            DateTime                      @default(now())
-  promotionId          String?
-  updatedAt            DateTime                      @updatedAt
-  attendances          Attendance[]                  @relation("StudentAttendances")
-  correctedAttendances Attendance[]                  @relation("AttendanceCorrector")
-  auditLogs            AuditLog[]
-  courses              Course[]                      @relation("TeacherCourses")
-  sessions             Session[]                     @relation("TeacherSessions")
-  correctionRequests   AttendanceCorrectionRequest[] @relation("StudentCorrections")
-  handledCorrections   AttendanceCorrectionRequest[] @relation("TeacherCorrections")
-  resolvedCorrections  AttendanceCorrectionRequest[] @relation("CorrectionResolver")
-  sessionEnrollments   SessionEnrollment[]
-  authTokens           AuthToken[]
-  authThrottles        AuthThrottle[]
-  authSessions         AuthSession[]
-  promotion            Promotion?                    @relation(fields: [promotionId], references: [id])
+  id                     String                        @id @default(cuid())
+  matricule              String?                       @unique
+  name                   String
+  email                  String?                       @unique
+  passwordHash           String
+  role                   Role
+  status                 UserStatus
+  activatedAt            DateTime?
+  mustChangePassword     Boolean                       @default(true)
+  passwordChangedAt      DateTime?
+  lastLoginAt            DateTime?
+  sessionVersion         Int                           @default(1)
+  createdAt              DateTime                      @default(now())
+  promotionId            String?
+  updatedAt              DateTime                      @updatedAt
+  attendances            Attendance[]                  @relation("StudentAttendances")
+  correctedAttendances   Attendance[]                  @relation("AttendanceCorrector")
+  auditLogs              AuditLog[]
+  courses                Course[]                      @relation("TeacherCourses")
+  sessions               Session[]                     @relation("TeacherSessions")
+  correctionRequests     AttendanceCorrectionRequest[] @relation("StudentCorrections")
+  handledCorrections     AttendanceCorrectionRequest[] @relation("TeacherCorrections")
+  resolvedCorrections    AttendanceCorrectionRequest[] @relation("CorrectionResolver")
+  sessionEnrollments     SessionEnrollment[]
+  authTokens             AuthToken[]
+  authThrottles          AuthThrottle[]
+  authSessions           AuthSession[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  pushSubscriptions      PushSubscription[]
+  promotion              Promotion?                    @relation(fields: [promotionId], references: [id])
 
   @@index([role])
   @@index([status])
@@ -73,6 +76,52 @@ model AuthSession {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  kind      NotificationKind
+  title     String
+  body      String
+  href      String
+  dedupeKey String
+  readAt    DateTime?
+  expiresAt DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@index([expiresAt])
+}
+
+model NotificationPreference {
+  userId            String   @id
+  sessionUpdates    Boolean  @default(true)
+  correctionUpdates Boolean  @default(true)
+  attendanceAlerts  Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, revokedAt])
   @@index([expiresAt])
 }
@@ -293,4 +342,15 @@ enum AuthThrottleAction {
   LOGIN
   RECOVERY
   TOKEN_VERIFY
+}
+
+enum NotificationKind {
+  SESSION_SCHEDULED
+  SESSION_UPDATED
+  SESSION_STARTED
+  SESSION_CANCELLED
+  CORRECTION_REQUESTED
+  CORRECTION_RESOLVED
+  ATTENDANCE_ALERT
+  SYSTEM
 }

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTransition } from "react";
-import { AlertTriangle, Bell, ChevronDown, KeyRound, LogOut, RotateCcw } from "lucide-react";
+import { BellRing, ChevronDown, KeyRound, LogOut, RotateCcw } from "lucide-react";
 import type { Role, UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { NotificationCenter } from "@/components/notifications/notification-center";
+import { removePushSubscriptionAction } from "@/actions/notification.actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,16 +63,20 @@ export function Topbar({
   const pathname = usePathname();
   const [leaving, startLeaving] = useTransition();
   const breadcrumb = getBreadcrumb(pathname);
-  const notificationHref = role === "ADMIN"
-    ? "/admin/sessions"
-    : role === "TEACHER"
-      ? "/teacher/corrections"
-      : "/student/history";
   const initials = user.name
     .split(" ")
     .map((part) => part[0])
     .slice(0, 2)
     .join("");
+
+  async function revokeCurrentDevicePush() {
+    if (!("serviceWorker" in navigator)) return;
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = await registration?.pushManager.getSubscription();
+    if (!subscription) return;
+    const result = await removePushSubscriptionAction(subscription.endpoint);
+    if (result.ok) await subscription.unsubscribe();
+  }
 
   return (
     <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
@@ -90,42 +96,7 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={`${anomalies.length} notifications`}>
-              <Bell />
-              {anomalies.length > 0 && (
-                <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-red-500 ring-2 ring-background" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[min(360px,calc(100vw-2rem))]">
-            <DropdownMenuLabel className="flex items-center justify-between">
-              <span>Notifications</span>
-              <span className="text-xs font-normal text-muted-foreground">{anomalies.length} à traiter</span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {anomalies.length === 0 ? (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">Aucune notification.</div>
-            ) : anomalies.slice(0, 4).map((anomaly) => (
-              <DropdownMenuItem asChild key={anomaly.id} className="items-start gap-3 py-3">
-                <Link href={anomaly.href}>
-                  <AlertTriangle className={anomaly.severity === "HIGH" ? "text-red-600" : "text-amber-600"} />
-                  <span>
-                    <span className="block font-medium">{anomaly.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{anomaly.detail}</span>
-                  </span>
-                </Link>
-              </DropdownMenuItem>
-            ))}
-            {anomalies.length > 4 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild><Link href={notificationHref}>Tout consulter</Link></DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <NotificationCenter anomalies={anomalies} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-10 gap-2 px-2">
@@ -151,10 +122,17 @@ export function Topbar({
             <DropdownMenuItem asChild>
               <Link href="/account/security"><KeyRound />Sécurité du compte</Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/account/notifications"><BellRing />Notifications</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={leaving}
               onSelect={() => startLeaving(async () => {
-                await signOut({ callbackUrl: "/login?notice=signedout" });
+                try {
+                  await revokeCurrentDevicePush();
+                } finally {
+                  await signOut({ callbackUrl: "/login?notice=signedout" });
+                }
               })}
             >
               <LogOut />

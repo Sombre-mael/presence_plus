@@ -24,6 +24,9 @@ describe("PWA versionnée", () => {
     expect(workerResponse.headers.get("service-worker-allowed")).toBe("/");
     expect(worker).toContain("SKIP_WAITING");
     expect(worker).toContain("APP_VERSION");
+    expect(worker).toContain('addEventListener("push"');
+    expect(worker).toContain('addEventListener("notificationclick"');
+    expect(worker).toContain('payload.href.startsWith("/")');
     expect(worker).not.toContain('addEventListener("fetch"');
   });
 

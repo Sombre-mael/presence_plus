@@ -184,6 +184,22 @@ AUTH_EMAIL_REPLY_TO="adresse-verifiee@gmail.com"
 
 Resend reste disponible avec `AUTH_EMAIL_PROVIDER="resend"`, `RESEND_API_KEY` et `AUTH_EMAIL_FROM` lorsqu'un domaine d'envoi vérifié est disponible. Les secrets des fournisseurs doivent rester dans les variables d'environnement du serveur et de Vercel.
 
+Pour activer les notifications push Web sur les appareils autorisés, générer une seule paire de clés VAPID :
+
+```bash
+pnpm exec web-push generate-vapid-keys
+```
+
+Puis renseigner les trois variables dans l'environnement serveur :
+
+```env
+NEXT_PUBLIC_VAPID_PUBLIC_KEY="..."
+VAPID_PRIVATE_KEY="..."
+VAPID_SUBJECT="mailto:adresse-de-contact@etablissement.cd"
+```
+
+La clé privée ne doit jamais être exposée au navigateur. Les utilisateurs activent ensuite explicitement les notifications depuis leur espace. Sur iPhone et iPad, l'application doit être installée sur l'écran d'accueil pour recevoir les notifications Web Push.
+
 Préparer Prisma et démarrer l'application :
 
 ```bash
@@ -251,7 +267,7 @@ e2e/              Parcours Playwright
 
 ## Déploiement
 
-Le déploiement de production utilise Vercel pour l'application et PostgreSQL pour les données. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
+Le déploiement de production utilise Vercel pour l'application et PostgreSQL pour les données. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. Les trois variables VAPID sont également requises lorsque le push est activé. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
 
 ## Licence
 

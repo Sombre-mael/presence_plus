@@ -295,17 +295,6 @@ export function getStudentNotifications(
       });
     }
   }
-  for (const request of state.correctionRequests.filter(
-    (item) => item.studentId === studentId && ["APPROVED", "REJECTED"].includes(item.status),
-  ).slice(-2)) {
-    notifications.push({
-      id: `request-${request.id}`,
-      severity: request.status === "APPROVED" ? "LOW" : "MEDIUM",
-      title: request.status === "APPROVED" ? "Correction acceptée" : "Correction refusée",
-      detail: request.decisionReason ?? "Votre demande a été traitée.",
-      href: "/student/history",
-    });
-  }
   const stats = getStudentStats(state, studentId);
   if (stats.completedCount && stats.attendanceRate < 80) {
     notifications.push({
