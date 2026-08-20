@@ -169,7 +169,20 @@ AUTH_EMAIL_MODE="manual"
 pnpm exec auth secret
 ```
 
-En mode `manual`, l'administration remet un lien personnel à usage unique. Un code d'activation ou de récupération reste disponible en secours. Lorsqu'un domaine d'envoi vérifié sera disponible, renseigner `RESEND_API_KEY` et `AUTH_EMAIL_FROM`, puis passer `AUTH_EMAIL_MODE` à `live`.
+En mode `manual`, l'administration remet un lien personnel à usage unique. Un code d'activation ou de récupération reste disponible en secours.
+
+Pour activer gratuitement les e-mails transactionnels avec un expéditeur Brevo vérifié :
+
+```env
+AUTH_EMAIL_MODE="live"
+AUTH_EMAIL_PROVIDER="brevo"
+BREVO_API_KEY="..."
+BREVO_SENDER_EMAIL="adresse-verifiee@gmail.com"
+BREVO_SENDER_NAME="Presence Plus"
+AUTH_EMAIL_REPLY_TO="adresse-verifiee@gmail.com"
+```
+
+Resend reste disponible avec `AUTH_EMAIL_PROVIDER="resend"`, `RESEND_API_KEY` et `AUTH_EMAIL_FROM` lorsqu'un domaine d'envoi vérifié est disponible. Les secrets des fournisseurs doivent rester dans les variables d'environnement du serveur et de Vercel.
 
 Préparer Prisma et démarrer l'application :
 

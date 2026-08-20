@@ -1,21 +1,14 @@
 import "server-only";
 
-import { Resend } from "resend";
-import type { AuthDeliveryStatus, AuthTokenType } from "@/generated/prisma/client";
+import type { AuthTokenType } from "@/generated/prisma/client";
+import {
+  sendTransactionalAuthEmail,
+  type AuthEmailRecipient,
+  type AuthEmailResult,
+} from "@/lib/auth-email-transport.server";
 import { prisma } from "@/lib/prisma";
 
-export interface AuthEmailRecipient {
-  email: string | null;
-  name: string;
-}
-
-export interface AuthEmailResult {
-  sent: boolean;
-  simulated: boolean;
-  message: string;
-  status: AuthDeliveryStatus;
-  providerMessageId?: string;
-}
+export type { AuthEmailRecipient, AuthEmailResult } from "@/lib/auth-email-transport.server";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -29,10 +22,6 @@ function escapeHtml(value: string) {
 
 function publicUrl() {
   return process.env.NEXTAUTH_URL?.trim().replace(/\/$/, "") || "http://localhost:3000";
-}
-
-export function authEmailConfigurationReady() {
-  return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.AUTH_EMAIL_FROM?.trim());
 }
 
 export function authActionPath(type: AuthTokenType, token: string) {
@@ -79,36 +68,13 @@ export async function sendAuthEmail(
       <p style="color:#66736d;font-size:13px">Si vous n’êtes pas à l’origine de cette demande, ignorez ce message.</p>
     </div>`;
 
-  if (!recipient.email) {
-    return { sent: false, simulated: false, status: "NOT_APPLICABLE", message: "Aucun e-mail n’est associé à ce compte." };
-  }
-
-  if (process.env.AUTH_EMAIL_MODE === "manual") {
-    return { sent: false, simulated: true, status: "SIMULATED", message: "Le lien ou le code doit être remis directement à l’utilisateur." };
-  }
-
-  if (process.env.AUTH_EMAIL_MODE === "mock" || (process.env.NODE_ENV !== "production" && !authEmailConfigurationReady())) {
-    if (process.env.NODE_ENV !== "test") console.info(`[auth-email:mock] ${type} destiné à ${recipient.email}`);
-    return { sent: true, simulated: true, status: "SIMULATED", message: "E-mail simulé en environnement local." };
-  }
-
-  if (!authEmailConfigurationReady()) {
-    return { sent: false, simulated: false, status: "FAILED", message: "Le transport d’e-mail de production n’est pas configuré." };
-  }
-
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  const response = await resend.emails.send({
-    from: process.env.AUTH_EMAIL_FROM!,
-    to: recipient.email,
+  return sendTransactionalAuthEmail({
+    recipient,
     subject,
     html,
     text,
-  }, { idempotencyKey });
-
-  if (response.error) {
-    return { sent: false, simulated: false, status: "FAILED", message: "L’e-mail n’a pas pu être envoyé." };
-  }
-  return { sent: true, simulated: false, status: "ACCEPTED", providerMessageId: response.data?.id, message: "E-mail accepté par le service d’envoi." };
+    idempotencyKey,
+  });
 }
 
 export async function deliverAuthEmail(

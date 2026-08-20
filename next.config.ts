@@ -31,12 +31,18 @@ if (process.env.VERCEL_ENV === "production") {
   }
   if (!process.env.NEXTAUTH_URL?.startsWith("https://")) throw new Error("NEXTAUTH_URL doit utiliser HTTPS en production.");
   if (process.env.AUTH_EMAIL_MODE === "live") {
-    const requiredEmailVariables = ["RESEND_API_KEY", "AUTH_EMAIL_FROM"];
+    const provider = process.env.AUTH_EMAIL_PROVIDER?.trim().toLocaleLowerCase();
+    if (!provider || !["brevo", "resend"].includes(provider)) {
+      throw new Error("AUTH_EMAIL_PROVIDER doit valoir brevo ou resend lorsque l’envoi est actif.");
+    }
+    const requiredEmailVariables = provider === "brevo"
+      ? ["BREVO_API_KEY", "BREVO_SENDER_EMAIL", "BREVO_SENDER_NAME"]
+      : ["RESEND_API_KEY", "AUTH_EMAIL_FROM"];
     const missingEmailVariables = requiredEmailVariables.filter((name) => !process.env[name]?.trim());
     if (missingEmailVariables.length) {
-      throw new Error(`Configuration Resend incomplète : ${missingEmailVariables.join(", ")}`);
+      throw new Error(`Configuration ${provider === "brevo" ? "Brevo" : "Resend"} incomplète : ${missingEmailVariables.join(", ")}`);
     }
-    if (process.env.AUTH_EMAIL_FROM?.includes("example.com")) {
+    if (provider === "resend" && process.env.AUTH_EMAIL_FROM?.includes("example.com")) {
       throw new Error("AUTH_EMAIL_FROM doit utiliser un domaine d’envoi vérifié.");
     }
   }
