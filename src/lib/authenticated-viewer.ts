@@ -36,7 +36,7 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
   return {
     id: user.id,
     name: user.name,
-    ...(user.email ? { email: user.email } : {}),
+    email: user.email,
     role: user.role,
     status: user.status,
     promotion: user.promotion?.name,

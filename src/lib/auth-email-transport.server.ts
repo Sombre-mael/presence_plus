@@ -6,7 +6,7 @@ import type { AuthDeliveryStatus } from "@/generated/prisma/client";
 export type AuthEmailProvider = "brevo" | "resend";
 
 export interface AuthEmailRecipient {
-  email: string | null;
+  email: string;
   name: string;
 }
 
@@ -92,7 +92,7 @@ async function sendWithResend(message: TransactionalAuthEmail): Promise<AuthEmai
   const replyTo = process.env.AUTH_EMAIL_REPLY_TO?.trim();
   const response = await resend.emails.send({
     from: process.env.AUTH_EMAIL_FROM!,
-    to: message.recipient.email!,
+    to: message.recipient.email,
     subject: message.subject,
     html: message.html,
     text: message.text,
@@ -110,10 +110,6 @@ async function sendWithResend(message: TransactionalAuthEmail): Promise<AuthEmai
 }
 
 export async function sendTransactionalAuthEmail(message: TransactionalAuthEmail): Promise<AuthEmailResult> {
-  if (!message.recipient.email) {
-    return { sent: false, simulated: false, status: "NOT_APPLICABLE", message: "Aucun e-mail n’est associé à ce compte." };
-  }
-
   const mode = process.env.AUTH_EMAIL_MODE;
   if (mode === "manual") {
     return { sent: false, simulated: true, status: "SIMULATED", message: "Le lien ou le code doit être remis directement à l’utilisateur." };

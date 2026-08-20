@@ -56,21 +56,23 @@ describe("règles métier administrateur", () => {
     expect(result.fieldErrors?.code).toBeDefined();
   });
 
-  it("autorise un étudiant sans e-mail mais l’exige pour le personnel", () => {
+  it("exige une adresse e-mail valide pour tous les rôles", () => {
     const student = validateUser(freshAdminData(), {
-      name: "Étudiant sans e-mail",
+      name: "Étudiant sans adresse",
+      email: "",
       role: "STUDENT",
       status: "ACTIVE",
       matricule: "INF26-099",
       promotionId: "p2",
     });
     const teacher = validateUser(freshAdminData(), {
-      name: "Enseignant sans e-mail",
+      name: "Enseignant sans adresse",
+      email: "adresse-invalide",
       role: "TEACHER",
       status: "ACTIVE",
     });
 
-    expect(student.ok).toBe(true);
+    expect(student.fieldErrors?.email).toBeDefined();
     expect(teacher.fieldErrors?.email).toBeDefined();
   });
 

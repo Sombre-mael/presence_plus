@@ -82,8 +82,7 @@ export function PasswordWorkflowForm({ workflow, token, tokenValid = Boolean(tok
         try {
           const login = await signIn("credentials", { identifier: response.value.identifier, password, redirect: false });
           if (login?.ok) {
-            router.replace("/dashboard");
-            router.refresh();
+            window.location.assign(new URL("/dashboard", window.location.origin));
             return;
           }
         } catch {
@@ -104,15 +103,15 @@ export function PasswordWorkflowForm({ workflow, token, tokenValid = Boolean(tok
         </div>
         <div aria-live="polite">{result && !result.ok ? <Alert variant="destructive"><AlertDescription>{result.message}</AlertDescription></Alert> : null}</div>
         <div className="space-y-2">
-          <Label htmlFor="identifier">E-mail ou matricule</Label>
-          <Input id="identifier" name="identifier" autoComplete="username" aria-invalid={Boolean(result?.fieldErrors?.identifier)} aria-describedby={result?.fieldErrors?.identifier ? "identifier-error" : undefined} disabled={pending} required autoFocus className="h-11" />
+          <Label htmlFor="identifier">Adresse e-mail</Label>
+          <Input id="identifier" name="identifier" type="email" autoComplete="email" aria-invalid={Boolean(result?.fieldErrors?.identifier)} aria-describedby={result?.fieldErrors?.identifier ? "identifier-error" : undefined} disabled={pending} required autoFocus className="h-11" />
           {result?.fieldErrors?.identifier ? <p id="identifier-error" className="text-xs text-destructive">{result.fieldErrors.identifier}</p> : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor="manualCode">Code à usage unique</Label>
           <Input id="manualCode" name="manualCode" autoComplete="one-time-code" inputMode="text" spellCheck={false} className="h-11 font-mono uppercase" placeholder="ABCDE-FGHJK" aria-invalid={Boolean(result?.fieldErrors?.manualCode)} aria-describedby={result?.fieldErrors?.manualCode ? "manual-code-error" : "manual-code-help"} disabled={pending} maxLength={11} required />
           {result?.fieldErrors?.manualCode ? <p id="manual-code-error" className="text-xs text-destructive">{result.fieldErrors.manualCode}</p> : null}
-          <p id="manual-code-help" className="text-xs leading-5 text-muted-foreground">Utilisez le code personnel remis par votre établissement.</p>
+          <p id="manual-code-help" className="text-xs leading-5 text-muted-foreground">Utilisez le code reçu avec votre invitation ou remis par votre établissement.</p>
         </div>
         <Button type="submit" className="h-11 w-full" disabled={pending}>{pending ? <><LoaderCircle className="animate-spin" />Vérification...</> : "Continuer"}</Button>
       </form>

@@ -100,7 +100,7 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           name: user.name,
-          email: user.email ?? undefined,
+          email: user.email,
           role: user.role,
           sessionVersion: user.sessionVersion,
           mustChangePassword: user.mustChangePassword,

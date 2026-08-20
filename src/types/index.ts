@@ -8,7 +8,7 @@ export type AttendanceSource = "QR" | "STUDENT_CODE" | "MANUAL";
 export interface UserSummary {
   id: string;
   name: string;
-  email?: string;
+  email: string;
   role: Role;
   status: UserStatus;
   promotion?: string;

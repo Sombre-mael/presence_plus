@@ -123,7 +123,7 @@ Presence Plus applique plusieurs règles afin de protéger la cohérence des don
 
 Les parcours administrateur, enseignant et étudiant utilisent Prisma et PostgreSQL comme source de vérité. L'accès est assuré par Auth.js avec des sessions de huit heures, un contrôle du rôle côté serveur et un registre de sessions permettant de révoquer les appareils connectés.
 
-Il n'existe pas d'inscription publique. Le premier administrateur est créé par une commande contrôlée, puis l'administration invite les enseignants et étudiants. L'activation peut utiliser un lien envoyé par e-mail ou un code à usage unique remis directement à l'utilisateur. L'e-mail reste facultatif pour un étudiant disposant d'un matricule.
+Il n'existe pas d'inscription publique. Le premier administrateur est créé par une commande contrôlée, puis l'administration invite les enseignants et étudiants. Une adresse e-mail unique est obligatoire pour chaque compte : elle reçoit le lien personnel d'activation et les instructions de récupération. Le matricule étudiant reste disponible comme identifiant de connexion secondaire. Un code à usage unique peut servir de solution de secours avec l'adresse e-mail du compte.
 
 Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un secret Auth dédié, d'une base PostgreSQL migrée et d'un domaine d'envoi Resend vérifié. Le mode d'e-mail simulé est automatiquement refusé sur Vercel en production.
 

@@ -50,7 +50,7 @@ export async function queryE2E<T extends Record<string, unknown> = Record<string
   throw lastError;
 }
 
-async function connectWithRetry(pool: Pool, attempts = 6) {
+export async function connectE2EWithRetry(pool: Pool, attempts = 6) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -169,7 +169,7 @@ export async function restoreFixedAuthProfiles(database: Queryable) {
 
 export async function cleanupAllE2EData() {
   const pool = createE2EPool();
-  const client = await connectWithRetry(pool);
+  const client = await connectE2EWithRetry(pool);
   try {
     await assertE2EDatabase(client);
     await client.query("BEGIN");

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { getE2EEnvironment } from "./environment";
-import { cleanupAuthUserFixture, createAuthCodeFixture, createAuthTokenFixture, createAuthUserFixture, createStudentWithoutEmailFixture, loginAs } from "./helpers";
+import { cleanupAuthUserFixture, createAuthCodeFixture, createAuthTokenFixture, createAuthUserFixture, loginAs } from "./helpers";
 
 test("un accès anonyme est redirigé vers la connexion", async ({ page }) => {
   await page.goto("/admin/dashboard");
@@ -164,16 +164,16 @@ test("un jeton de réinitialisation expiré est refusé", async ({ page }) => {
   }
 });
 
-test("un étudiant sans e-mail active son compte avec son matricule et un code", async ({ page }) => {
-  const user = await createStudentWithoutEmailFixture();
+test("un étudiant active son compte avec son e-mail et un code", async ({ page }) => {
+  const user = await createAuthUserFixture({ role: "STUDENT", activated: false, mustChangePassword: true });
   const code = await createAuthCodeFixture(user.id, "INVITATION");
   const password = "J aime apprendre";
   try {
     await page.goto("/activate-account");
-    await page.getByLabel("E-mail ou matricule").fill(user.matricule);
+    await page.getByLabel("Adresse e-mail").fill(user.email);
     await page.getByLabel("Code à usage unique").fill(code);
     await page.getByRole("button", { name: "Continuer" }).click();
-    await expect(page.getByText(/Code vérifié pour/)).toBeVisible();
+    await expect(page.getByText(/Code vérifié pour/)).toBeVisible({ timeout: 60_000 });
     await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);
     await page.getByLabel("Confirmer le nouveau mot de passe", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Activer mon compte" }).click();

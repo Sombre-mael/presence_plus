@@ -65,10 +65,7 @@ export async function inspectAuthCode(identifierValue: string, codeValue: string
       usedAt: null,
       expiresAt: { gt: new Date() },
       user: {
-        OR: [
-          { email: { equals: identifier, mode: "insensitive" } },
-          { matricule: { equals: identifier, mode: "insensitive" } },
-        ],
+        email: { equals: identifier, mode: "insensitive" },
       },
     },
     select: { id: true, expiresAt: true, user: { select: tokenUserSelect } },

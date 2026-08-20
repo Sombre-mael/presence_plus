@@ -187,7 +187,7 @@ function AccessCredentialDialog({ credential, onClose }: { credential?: AuthAcce
   const delivery = activeCredential.deliveryStatus === "ACCEPTED" ? "E-mail accepté par le service d’envoi"
     : activeCredential.deliveryStatus === "SIMULATED" ? "Accès à remettre directement"
       : activeCredential.deliveryStatus === "FAILED" ? "Échec de l’envoi par e-mail"
-        : "Aucun e-mail associé";
+        : "Envoi en attente";
 
   function accessUrl() {
     return new URL(activeCredential.actionPath, window.location.origin).toString();
@@ -364,8 +364,9 @@ function UserFormDialog({
               <FieldMessage message={errors.name} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="user-email">Adresse e-mail {role === "STUDENT" ? "(optionnelle)" : ""}</Label>
-              <Input id="user-email" name="email" type="email" aria-invalid={Boolean(errors.email)} defaultValue={user?.email} placeholder="prenom@etablissement.cd" />
+              <Label htmlFor="user-email">Adresse e-mail</Label>
+              <Input id="user-email" name="email" type="email" autoComplete="email" aria-invalid={Boolean(errors.email)} defaultValue={user?.email} placeholder="prenom@etablissement.cd" required />
+              <p className="text-xs leading-5 text-muted-foreground">Cette adresse recevra le lien personnel d’activation et les accès de récupération.</p>
               <FieldMessage message={errors.email} />
             </div>
             <div className="space-y-2">
@@ -451,7 +452,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("fr");
     return state.users.filter((user) => (
-      (!normalized || `${user.name} ${user.email ?? ""} ${user.matricule ?? ""}`.toLocaleLowerCase("fr").includes(normalized)) &&
+      (!normalized || `${user.name} ${user.email} ${user.matricule ?? ""}`.toLocaleLowerCase("fr").includes(normalized)) &&
       (role === "ALL" || user.role === role) &&
       (status === "ALL" || user.status === status)
     ));
@@ -514,7 +515,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                     <TableCell>
                       <button className="text-left" onClick={() => setSelectedId(user.id)}>
                         <span className="block font-medium">{user.name}</span>
-                        <span className="block text-xs text-muted-foreground">{user.email ?? user.matricule ?? "Sans identifiant"}</span>
+                        <span className="block text-xs text-muted-foreground">{user.email}</span>
                       </button>
                     </TableCell>
                     <TableCell>{roleLabels[user.role]}</TableCell>
@@ -534,7 +535,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
               <span className="flex size-9 shrink-0 items-center justify-center bg-primary/8 text-primary"><UserRound className="size-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{user.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">{roleLabels[user.role]} · {user.email ?? user.matricule ?? "Sans e-mail"}</span>
+                <span className="block truncate text-xs text-muted-foreground">{roleLabels[user.role]} · {user.email}</span>
               </span>
               <Badge className={accessState(user).className}>{accessState(user).label}</Badge>
             </button>
@@ -552,7 +553,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                 <SheetDescription>{roleLabels[selected.role]} · compte créé le {new Date(selected.createdAt).toLocaleDateString("fr-FR")}</SheetDescription>
               </SheetHeader>
               <div className="px-4">
-                <DetailLine label="E-mail">{selected.email ?? "Non renseigné"}</DetailLine>
+                <DetailLine label="E-mail">{selected.email}</DetailLine>
                 <DetailLine label="Statut"><StatusBadge status={selected.status} /></DetailLine>
                 <DetailLine label="Accès"><Badge className={accessState(selected).className}>{accessState(selected).label}</Badge></DetailLine>
                 <DetailLine label="Dernière connexion">{selected.lastLoginAt ? new Date(selected.lastLoginAt).toLocaleString("fr-FR") : "Jamais"}</DetailLine>

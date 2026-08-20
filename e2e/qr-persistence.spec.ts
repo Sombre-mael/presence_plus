@@ -12,7 +12,7 @@ async function authenticate(context: BrowserContext, userId: "u2" | "u4", sessio
   const result = await queryE2E<{
     id: string;
     name: string;
-    email: string | null;
+    email: string;
     role: "TEACHER" | "STUDENT";
     sessionVersion: number;
     mustChangePassword: boolean;
@@ -37,7 +37,7 @@ async function authenticate(context: BrowserContext, userId: "u2" | "u4", sessio
       sub: user.id,
       userId: user.id,
       name: user.name,
-      email: user.email ?? undefined,
+      email: user.email,
       role: user.role,
       sessionVersion: user.sessionVersion,
       mustChangePassword: user.mustChangePassword,

@@ -114,7 +114,7 @@ export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<Ac
   return users.map((user) => ({
     id: user.id,
     name: user.name,
-    ...(user.email ? { email: user.email } : {}),
+    email: user.email,
     role: user.role,
     status: user.status,
     promotionId: user.promotionId ?? undefined,

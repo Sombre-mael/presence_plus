@@ -149,7 +149,7 @@ async function createAndSendInvitation(userId: string, actorId: string) {
   const delivery = await deliverAuthEmail(issued.token.id, issued.user, "INVITATION", issued.token.token, actorId);
   return {
     kind: "INVITATION",
-    identifier: issued.user.email ?? issued.user.matricule ?? "",
+    identifier: issued.user.email,
     actionPath: authActionPath("INVITATION", issued.token.token),
     manualCode: issued.token.manualCode,
     expiresAt: issued.token.expiresAt.toISOString(),
@@ -261,7 +261,7 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
   const validation = validateUser(state, input);
   if (!validation.ok) return failure(validation);
   const id = randomUUID();
-  const email = input.email?.trim().toLowerCase() || null;
+  const email = input.email.trim().toLowerCase();
   const matricule = input.role === "STUDENT" ? input.matricule?.trim().toUpperCase() || null : null;
   const passwordHash = await bcrypt.hash(unusablePassword(), 12);
   let invitation: Awaited<ReturnType<typeof issueAuthToken>> | null;
@@ -292,15 +292,13 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
   }
   if (!invitation) return success(viewer, `${validation.message} Le compte inactif n’a pas reçu d’invitation.`, ["users", "auditLogs"], { id });
   const delivery = await deliverAuthEmail(invitation.id, { email, name: input.name.trim() }, "INVITATION", invitation.token, viewer.id);
-  const message = delivery.status === "NOT_APPLICABLE"
-    ? `${validation.message} Un lien et un code d’activation ont été générés.`
-    : delivery.status === "FAILED"
+  const message = delivery.status === "FAILED"
       ? `${validation.message} L’accès est disponible, mais l’e-mail n’a pas été accepté.`
       : `${validation.message} ${delivery.status === "SIMULATED" ? "Le lien et le code sont prêts à être remis directement à l’utilisateur." : "L’envoi a été accepté par le service d’e-mail."}`;
   return success(viewer, message, ["users", "auditLogs"], {
     id,
     kind: "INVITATION",
-    identifier: email ?? matricule ?? "",
+    identifier: email,
     actionPath: authActionPath("INVITATION", invitation.token),
     manualCode: invitation.manualCode,
     expiresAt: invitation.expiresAt.toISOString(),
@@ -315,7 +313,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
   const validation = validateUser(state, input, id);
   if (!validation.ok) return failure(validation);
   const current = state.users.find((user) => user.id === id);
-  const email = input.email?.trim().toLowerCase() || null;
+  const email = input.email.trim().toLowerCase();
   if (!current) return failure({ ok: false, message: "Utilisateur introuvable." });
   if (current.role !== input.role) {
     const hasDependencies = state.courses.some((course) => course.teacherId === id) ||
@@ -325,8 +323,9 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
       state.correctionRequests.some((request) => request.studentId === id || request.teacherId === id);
     if (hasDependencies) return failure({ ok: false, message: "Le rôle ne peut pas changer tant que ce compte possède un historique métier.", fieldErrors: { role: "Désactivez le compte ou conservez son rôle." } });
   }
+  let renewedInvitation: Awaited<ReturnType<typeof issueAuthToken>> | null = null;
   try {
-    await prisma.$transaction(async (tx) => {
+    renewedInvitation = await prisma.$transaction(async (tx) => {
       const persisted = await tx.user.findUnique({ where: { id }, select: { role: true, status: true, email: true } });
       if (!persisted) throw Object.assign(new Error("Utilisateur introuvable."), { code: "BUSINESS_RULE" });
       if (persisted.role !== input.role) {
@@ -347,7 +346,8 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
         const blocker = await userStatusBlocker(tx, id, input.status, viewer.id);
         if (blocker) throw Object.assign(new Error(blocker), { code: "BUSINESS_RULE" });
       }
-      const securityChanged = persisted.role !== input.role || persisted.status !== input.status || persisted.email?.toLocaleLowerCase("fr") !== email?.toLocaleLowerCase("fr");
+      const emailChanged = persisted.email.toLocaleLowerCase("fr") !== email.toLocaleLowerCase("fr");
+      const securityChanged = persisted.role !== input.role || persisted.status !== input.status || emailChanged;
       await tx.user.update({
         where: { id },
         data: {
@@ -355,6 +355,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
           email,
           role: input.role,
           status: input.status,
+          ...(emailChanged ? { activatedAt: null, mustChangePassword: true } : {}),
           ...(securityChanged ? { sessionVersion: { increment: 1 } } : {}),
           matricule: input.role === "STUDENT" ? input.matricule?.trim().toUpperCase() : null,
           promotion: input.role === "STUDENT" && input.promotionId
@@ -367,7 +368,11 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
         await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: now } });
         await revokeAuthSessions(tx, id, "ACCOUNT_SECURITY_CHANGED", undefined, now);
       }
+      const invitation = emailChanged && input.status === "ACTIVE"
+        ? await issueAuthToken(id, "INVITATION", tx)
+        : null;
       await audit(viewer.id, "UPDATE_USER", "User", id, undefined, tx);
+      return invitation;
     }, SERIALIZABLE_TRANSACTION_OPTIONS);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "BUSINESS_ROLE") {
@@ -377,6 +382,21 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
       return failure({ ok: false, message: error.message, fieldErrors: { status: error.message } });
     }
     return prismaFailure(error, "L’utilisateur n’a pas pu être modifié.");
+  }
+  if (renewedInvitation) {
+    const delivery = await deliverAuthEmail(renewedInvitation.id, { email, name: input.name.trim() }, "INVITATION", renewedInvitation.token, viewer.id);
+    const message = delivery.status === "FAILED"
+      ? `${validation.message} La nouvelle adresse doit être activée, mais l’e-mail n’a pas été accepté.`
+      : `${validation.message} Une nouvelle invitation a été envoyée pour vérifier l’adresse e-mail.`;
+    return success(viewer, message, ["users", "auditLogs"], {
+      id,
+      kind: "INVITATION",
+      identifier: email,
+      actionPath: authActionPath("INVITATION", renewedInvitation.token),
+      manualCode: renewedInvitation.manualCode,
+      expiresAt: renewedInvitation.expiresAt.toISOString(),
+      deliveryStatus: delivery.status,
+    });
   }
   if (current.status === "INACTIVE" && input.status === "ACTIVE" && !current.activatedAt) {
     const credential = await createAndSendInvitation(id, viewer.id);

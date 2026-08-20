@@ -14,21 +14,19 @@ import { isStoredAcademicData } from "./academic-domain";
 import { addAcademicDays, currentAcademicDate } from "./academic-calendar";
 
 const requiredText = z.string().trim().min(2, "Ce champ doit contenir au moins 2 caractères.");
+const requiredEmail = z.string().trim().max(160, "Maximum 160 caractères.").refine(
+  (value) => z.email().safeParse(value).success,
+  "Saisissez une adresse e-mail valide.",
+);
 
 export const adminUserSchema = z.object({
   name: requiredText,
-  email: z.string().trim().optional(),
+  email: requiredEmail,
   role: z.enum(["ADMIN", "TEACHER", "STUDENT"]),
   status: z.enum(["ACTIVE", "INACTIVE"]),
   promotionId: z.string().optional(),
   matricule: z.string().trim().optional(),
 }).superRefine((value, context) => {
-  if (value.email && !z.email().safeParse(value.email).success) {
-    context.addIssue({ code: "custom", path: ["email"], message: "Saisissez une adresse e-mail valide." });
-  }
-  if (value.role !== "STUDENT" && !value.email) {
-    context.addIssue({ code: "custom", path: ["email"], message: "L’e-mail est obligatoire pour ce rôle." });
-  }
   if (value.role === "STUDENT" && !value.promotionId) {
     context.addIssue({ code: "custom", path: ["promotionId"], message: "Sélectionnez une promotion." });
   }
@@ -72,8 +70,8 @@ export function validateUser(
   if (!parsed.success) {
     return { ok: false, message: "Vérifiez les informations saisies.", fieldErrors: fieldErrors(parsed.error) };
   }
-  const email = input.email?.trim().toLocaleLowerCase("fr");
-  if (email && state.users.some((user) => user.id !== editingId && user.email?.toLocaleLowerCase("fr") === email)) {
+  const email = input.email.trim().toLocaleLowerCase("fr");
+  if (state.users.some((user) => user.id !== editingId && user.email.toLocaleLowerCase("fr") === email)) {
     return { ok: false, message: "Cette adresse e-mail est déjà utilisée.", fieldErrors: { email: "Adresse déjà utilisée." } };
   }
   const matricule = input.matricule?.trim();

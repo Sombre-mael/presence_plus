@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 export default async function ActivateAccountPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const token = (await searchParams).token ?? "";
   const valid = await inspectAuthToken(token, "INVITATION");
-  return <AuthPageShell title="Activer votre compte" description={valid ? `Bienvenue ${valid.user.name}. Une phrase facile à retenir suffit pour protéger votre accès.` : "Vérifiez d’abord le code remis par votre établissement, puis choisissez votre mot de passe."}><PasswordWorkflowForm workflow="activate" token={token} tokenValid={Boolean(valid)} /></AuthPageShell>;
+  return <AuthPageShell title="Activer votre compte" description={valid ? `Bienvenue ${valid.user.name}. Une phrase facile à retenir suffit pour protéger votre accès.` : "Vérifiez votre adresse e-mail et votre code d’activation, puis choisissez votre mot de passe."}><PasswordWorkflowForm workflow="activate" token={token} tokenValid={Boolean(valid)} /></AuthPageShell>;
 }

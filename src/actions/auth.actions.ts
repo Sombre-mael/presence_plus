@@ -49,12 +49,12 @@ function passwordValidation(password: string, confirmation: string, identity: st
 function accessCredentialValue(
   issued: { manualCode: string; expiresAt: Date; token: string },
   deliveryStatus: AuthAccessCredential["deliveryStatus"],
-  user: { email: string | null; matricule: string | null },
+  user: { email: string },
   kind: AuthAccessCredential["kind"],
 ): AuthAccessCredential {
   return {
     kind,
-    identifier: user.email ?? user.matricule ?? "",
+    identifier: user.email,
     actionPath: authActionPath(kind, issued.token),
     manualCode: issued.manualCode,
     expiresAt: issued.expiresAt.toISOString(),
@@ -79,7 +79,7 @@ export async function requestPasswordResetAction(identifierValue: string): Promi
     },
     select: { id: true, name: true, email: true },
   });
-  if (!user?.email) return { ok: true, message: GENERIC_RECOVERY_MESSAGE };
+  if (!user) return { ok: true, message: GENERIC_RECOVERY_MESSAGE };
 
   const issued = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
     const token = await issueAuthToken(user.id, "PASSWORD_RESET", tx);
@@ -115,7 +115,7 @@ async function consumeCredentialAndSetPassword(
       message: "Ce lien ou ce code est invalide, expiré ou déjà utilisé.",
       ...(!credential.token ? {
         fieldErrors: {
-          identifier: "Vérifiez l’e-mail ou le matricule remis par l’administration.",
+          identifier: "Vérifiez l’adresse e-mail associée à l’invitation.",
           manualCode: "Vérifiez le code d’activation à usage unique.",
         },
       } : {}),
@@ -124,7 +124,7 @@ async function consumeCredentialAndSetPassword(
   if (type === "PASSWORD_RESET" && await bcrypt.compare(password, inspected.user.passwordHash)) {
     return { ok: false, message: "Choisissez un mot de passe différent.", fieldErrors: { password: "Le nouveau mot de passe doit être différent de l’actuel." } };
   }
-  const validation = passwordValidation(password, confirmation, [inspected.user.name, inspected.user.email ?? "", inspected.user.matricule ?? ""]);
+  const validation = passwordValidation(password, confirmation, [inspected.user.name, inspected.user.email, inspected.user.matricule ?? ""]);
   if (validation) return validation;
   const passwordHash = await bcrypt.hash(password, 12);
   const now = new Date();
@@ -165,7 +165,7 @@ async function consumeCredentialAndSetPassword(
   return {
     ok: true,
     message: type === "INVITATION" ? "Votre compte est activé." : "Votre mot de passe a été modifié. Vous pouvez vous connecter.",
-    value: { identifier: inspected.user.email ?? inspected.user.matricule ?? "" },
+    value: { identifier: inspected.user.email },
   };
 }
 
@@ -190,7 +190,7 @@ export async function previewAuthCodeAction(
       ok: false,
       message: "Ce code est invalide, expiré ou déjà utilisé.",
       fieldErrors: {
-        identifier: "Vérifiez l’e-mail ou le matricule remis par l’administration.",
+        identifier: "Vérifiez l’adresse e-mail associée au compte.",
         manualCode: "Vérifiez le code à usage unique.",
       },
     };
@@ -199,7 +199,7 @@ export async function previewAuthCodeAction(
     ok: true,
     message: "Code vérifié.",
     value: {
-      identifier: inspected.user.email ?? inspected.user.matricule ?? identifierValue.trim(),
+      identifier: inspected.user.email,
       displayName: inspected.user.name,
       expiresAt: inspected.expiresAt.toISOString(),
     },
@@ -227,7 +227,7 @@ export async function changeOwnPasswordAction(currentPassword: string, password:
   if (await bcrypt.compare(password, user.passwordHash)) {
     return { ok: false, message: "Choisissez un mot de passe différent.", fieldErrors: { password: "Le nouveau mot de passe doit être différent de l’actuel." } };
   }
-  const validation = passwordValidation(password, confirmation, [user.name, user.email ?? "", user.matricule ?? ""]);
+  const validation = passwordValidation(password, confirmation, [user.name, user.email, user.matricule ?? ""]);
   if (validation) return validation;
   const passwordHash = await bcrypt.hash(password, 12);
   const now = new Date();
@@ -301,9 +301,7 @@ async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWO
     return token;
   }, SERIALIZABLE_TRANSACTION_OPTIONS));
   const delivery = await deliverAuthEmail(issued.id, user, type, issued.token, viewer.id);
-  const message = delivery.status === "NOT_APPLICABLE"
-    ? "Lien et code générés. Remettez-les directement à l’utilisateur."
-    : delivery.status === "FAILED"
+  const message = delivery.status === "FAILED"
       ? "Accès généré, mais l’e-mail n’a pas été accepté."
       : delivery.status === "SIMULATED"
         ? "Lien et code générés pour remise directe à l’utilisateur."

@@ -11,7 +11,7 @@ import type { AccountAccessState, AuthAccessCredential, AuthDeliveryStatus } fro
 export interface AdminUser {
   id: string;
   name: string;
-  email?: string;
+  email: string;
   role: Role;
   status: UserStatus;
   promotionId?: string;
@@ -76,7 +76,7 @@ export interface AcademicDataState {
 
 export type AdminDataState = AcademicDataState;
 
-export type AdminUserInput = Pick<AdminUser, "name" | "role" | "status" | "promotionId" | "matricule"> & { email?: string };
+export type AdminUserInput = Pick<AdminUser, "name" | "email" | "role" | "status" | "promotionId" | "matricule">;
 export type UserAccessMutationValue = Partial<AuthAccessCredential> & { id?: string };
 export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt" | "updatedAt">;
 export type AdminCourseInput = Omit<AdminCourse, "id" | "createdAt" | "updatedAt">;
