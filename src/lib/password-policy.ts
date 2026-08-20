@@ -29,6 +29,15 @@ function identityWords(identityFragments: string[]) {
     .filter((value) => value.length >= 3);
 }
 
+const COMMON_PASSWORD_PARTS = [
+  "123456",
+  "azerty",
+  "motdepasse",
+  "password",
+  "presenceplus",
+  "qwerty",
+];
+
 export function evaluatePassword(password: string, identityFragments: string[] = []): PasswordPolicyResult {
   const errors: string[] = [];
   const byteLength = new TextEncoder().encode(password).length;
@@ -38,16 +47,20 @@ export function evaluatePassword(password: string, identityFragments: string[] =
   if (byteLength > 72) errors.push("Le mot de passe dépasse la limite sécurisée de 72 octets.");
 
   const lowerPassword = password.normalize("NFKD").toLocaleLowerCase("fr");
+  const compactPassword = lowerPassword.replace(/[^a-z0-9]+/g, "");
+  if (COMMON_PASSWORD_PARTS.some((part) => compactPassword.includes(part))) {
+    errors.push("Évitez les mots de passe courants ou liés à Presence Plus.");
+  }
   if (identityWords(identityFragments).some((fragment) => lowerPassword.includes(fragment))) {
     errors.push("Évitez votre nom, e-mail ou matricule dans le mot de passe.");
   }
 
   const result = passwordChecker().check(password, identityFragments);
-  if (result.score < 3) errors.push("Choisissez un mot de passe plus difficile à deviner.");
+  if (result.score < 2) errors.push("Cette phrase est trop facile à deviner. Ajoutez un mot inattendu.");
 
   const feedback = [result.feedback.warning, ...result.feedback.suggestions]
     .filter(Boolean)
-    .join(" ") || "Mot de passe robuste.";
+    .join(" ") || "Cette phrase convient.";
 
   return { valid: errors.length === 0, score: result.score, errors, feedback };
 }

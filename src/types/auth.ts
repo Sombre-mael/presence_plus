@@ -11,9 +11,20 @@ export type AuthDeliveryStatus = "NOT_APPLICABLE" | "SIMULATED" | "ACCEPTED" | "
 export interface AuthAccessCredential {
   kind: "INVITATION" | "PASSWORD_RESET";
   identifier: string;
+  actionPath: string;
   manualCode: string;
   expiresAt: string;
   deliveryStatus: AuthDeliveryStatus;
+}
+
+export interface AuthCodePreview {
+  identifier: string;
+  displayName: string;
+  expiresAt: string;
+}
+
+export interface AuthPasswordSuccess {
+  identifier: string;
 }
 
 export interface AuthSessionSummary {

@@ -35,9 +35,13 @@ export function authEmailConfigurationReady() {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.AUTH_EMAIL_FROM?.trim());
 }
 
-export function authLink(type: AuthTokenType, token: string) {
+export function authActionPath(type: AuthTokenType, token: string) {
   const path = type === "INVITATION" ? "/activate-account" : "/reset-password";
-  return `${publicUrl()}${path}?token=${encodeURIComponent(token)}`;
+  return `${path}?token=${encodeURIComponent(token)}`;
+}
+
+export function authLink(type: AuthTokenType, token: string) {
+  return `${publicUrl()}${authActionPath(type, token)}`;
 }
 
 export async function sendAuthEmail(
@@ -80,7 +84,7 @@ export async function sendAuthEmail(
   }
 
   if (process.env.AUTH_EMAIL_MODE === "manual") {
-    return { sent: false, simulated: true, status: "SIMULATED", message: "Le code doit être remis directement à l’utilisateur." };
+    return { sent: false, simulated: true, status: "SIMULATED", message: "Le lien ou le code doit être remis directement à l’utilisateur." };
   }
 
   if (process.env.AUTH_EMAIL_MODE === "mock" || (process.env.NODE_ENV !== "production" && !authEmailConfigurationReady())) {

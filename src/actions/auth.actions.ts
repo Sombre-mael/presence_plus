@@ -12,18 +12,30 @@ import {
 import { currentClientIp } from "@/lib/auth-request.server";
 import { inspectAuthCode, inspectAuthToken, issueAuthToken } from "@/lib/auth-token.server";
 import { hashOpaqueToken, normalizeIdentifier } from "@/lib/auth-crypto.server";
-import { deliverAuthEmail } from "@/lib/auth-email.server";
+import { authActionPath, deliverAuthEmail } from "@/lib/auth-email.server";
 import { evaluatePassword } from "@/lib/password-policy";
 import { listActiveAuthSessions, revokeAuthSessions } from "@/lib/auth-session.server";
 import { SERIALIZABLE_TRANSACTION_OPTIONS } from "@/lib/transaction-options";
 import { withSerializableRetry } from "@/lib/database-retry";
-import type { AuthAccessCredential, AuthActionResult as AuthResult, AuthSessionSummary } from "@/types/auth";
+import type {
+  AuthAccessCredential,
+  AuthActionResult as AuthResult,
+  AuthCodePreview,
+  AuthPasswordSuccess,
+  AuthSessionSummary,
+} from "@/types/auth";
 
 export type AuthActionResult<T = undefined> = AuthResult<T>;
 
 const GENERIC_RECOVERY_MESSAGE = "Si un moyen de récupération est disponible pour ce compte, les instructions ont été préparées. Si rien ne vous parvient, contactez l’administration.";
 
-function passwordValidation(password: string, confirmation: string, identity: string[]): AuthActionResult | null {
+type AuthValidationFailure = {
+  ok: false;
+  message: string;
+  fieldErrors: Record<string, string>;
+};
+
+function passwordValidation(password: string, confirmation: string, identity: string[]): AuthValidationFailure | null {
   if (password !== confirmation) {
     return { ok: false, message: "Les mots de passe ne correspondent pas.", fieldErrors: { confirmation: "Saisissez le même mot de passe." } };
   }
@@ -35,7 +47,7 @@ function passwordValidation(password: string, confirmation: string, identity: st
 }
 
 function accessCredentialValue(
-  issued: { manualCode: string; expiresAt: Date },
+  issued: { manualCode: string; expiresAt: Date; token: string },
   deliveryStatus: AuthAccessCredential["deliveryStatus"],
   user: { email: string | null; matricule: string | null },
   kind: AuthAccessCredential["kind"],
@@ -43,6 +55,7 @@ function accessCredentialValue(
   return {
     kind,
     identifier: user.email ?? user.matricule ?? "",
+    actionPath: authActionPath(kind, issued.token),
     manualCode: issued.manualCode,
     expiresAt: issued.expiresAt.toISOString(),
     deliveryStatus,
@@ -84,7 +97,7 @@ async function consumeCredentialAndSetPassword(
   type: "INVITATION" | "PASSWORD_RESET",
   password: string,
   confirmation: string,
-): Promise<AuthActionResult> {
+): Promise<AuthActionResult<AuthPasswordSuccess>> {
   const throttleKey = credential.token
     ? `token:${hashOpaqueToken(credential.token)}`
     : `code:${normalizeIdentifier(credential.identifier ?? "")}`;
@@ -149,7 +162,48 @@ async function consumeCredentialAndSetPassword(
     return { ok: false, message: "Ce lien ou ce code est invalide, expiré ou déjà utilisé." };
   }
   await clearTokenVerificationThrottle(throttleKey, ip);
-  return { ok: true, message: type === "INVITATION" ? "Votre compte est activé. Vous pouvez vous connecter." : "Votre mot de passe a été modifié. Vous pouvez vous connecter." };
+  return {
+    ok: true,
+    message: type === "INVITATION" ? "Votre compte est activé." : "Votre mot de passe a été modifié. Vous pouvez vous connecter.",
+    value: { identifier: inspected.user.email ?? inspected.user.matricule ?? "" },
+  };
+}
+
+export async function previewAuthCodeAction(
+  identifierValue: string,
+  manualCode: string,
+  type: "INVITATION" | "PASSWORD_RESET",
+): Promise<AuthActionResult<AuthCodePreview>> {
+  if (type !== "INVITATION" && type !== "PASSWORD_RESET") {
+    return { ok: false, message: "Ce code ne peut pas être vérifié pour le moment." };
+  }
+  const identifier = normalizeIdentifier(identifierValue);
+  const throttleKey = `code:${identifier}`;
+  const ip = await currentClientIp();
+  if (!identifier || !manualCode || await isAuthThrottled("TOKEN_VERIFY", throttleKey, ip)) {
+    return { ok: false, message: "Ce code ne peut pas être vérifié pour le moment." };
+  }
+  const inspected = await inspectAuthCode(identifier, manualCode, type);
+  if (!inspected || inspected.user.status !== "ACTIVE") {
+    await registerAuthFailure("TOKEN_VERIFY", throttleKey, ip);
+    return {
+      ok: false,
+      message: "Ce code est invalide, expiré ou déjà utilisé.",
+      fieldErrors: {
+        identifier: "Vérifiez l’e-mail ou le matricule remis par l’administration.",
+        manualCode: "Vérifiez le code à usage unique.",
+      },
+    };
+  }
+  return {
+    ok: true,
+    message: "Code vérifié.",
+    value: {
+      identifier: inspected.user.email ?? inspected.user.matricule ?? identifierValue.trim(),
+      displayName: inspected.user.name,
+      expiresAt: inspected.expiresAt.toISOString(),
+    },
+  };
 }
 
 export async function activateAccountAction(token: string, password: string, confirmation: string, identifier?: string, manualCode?: string) {
@@ -248,12 +302,12 @@ async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWO
   }, SERIALIZABLE_TRANSACTION_OPTIONS));
   const delivery = await deliverAuthEmail(issued.id, user, type, issued.token, viewer.id);
   const message = delivery.status === "NOT_APPLICABLE"
-    ? "Code généré. Remettez-le directement à l’utilisateur."
+    ? "Lien et code générés. Remettez-les directement à l’utilisateur."
     : delivery.status === "FAILED"
-      ? "Code généré, mais l’e-mail n’a pas été accepté."
+      ? "Accès généré, mais l’e-mail n’a pas été accepté."
       : delivery.status === "SIMULATED"
-        ? "Code généré pour remise directe à l’utilisateur."
-        : "Code généré et e-mail accepté par le service d’envoi.";
+        ? "Lien et code générés pour remise directe à l’utilisateur."
+        : "Accès généré et e-mail accepté par le service d’envoi.";
   return { ok: true, message, value: accessCredentialValue(issued, delivery.status, user, type) };
 }
 

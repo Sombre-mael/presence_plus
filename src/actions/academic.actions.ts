@@ -13,7 +13,7 @@ import {
 } from "@/lib/academic-repository";
 import { getAuthenticatedViewer, type AuthenticatedViewer } from "@/lib/authenticated-viewer";
 import { issueAuthToken } from "@/lib/auth-token.server";
-import { deliverAuthEmail } from "@/lib/auth-email.server";
+import { authActionPath, deliverAuthEmail } from "@/lib/auth-email.server";
 import { unusablePassword } from "@/lib/auth-crypto.server";
 import { revokeAuthSessions } from "@/lib/auth-session.server";
 import {
@@ -148,6 +148,7 @@ async function createAndSendInvitation(userId: string, actorId: string) {
   return {
     kind: "INVITATION",
     identifier: issued.user.email ?? issued.user.matricule ?? "",
+    actionPath: authActionPath("INVITATION", issued.token.token),
     manualCode: issued.token.manualCode,
     expiresAt: issued.token.expiresAt.toISOString(),
     deliveryStatus: delivery.status,
@@ -290,14 +291,15 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
   if (!invitation) return success(viewer, `${validation.message} Le compte inactif n’a pas reçu d’invitation.`, ["users", "auditLogs"], { id });
   const delivery = await deliverAuthEmail(invitation.id, { email, name: input.name.trim() }, "INVITATION", invitation.token, viewer.id);
   const message = delivery.status === "NOT_APPLICABLE"
-    ? `${validation.message} Un code d’activation a été généré.`
+    ? `${validation.message} Un lien et un code d’activation ont été générés.`
     : delivery.status === "FAILED"
-      ? `${validation.message} Le code est disponible, mais l’e-mail n’a pas été accepté.`
-      : `${validation.message} ${delivery.status === "SIMULATED" ? "Le code est prêt à être remis directement à l’utilisateur." : "L’envoi a été accepté par le service d’e-mail."}`;
+      ? `${validation.message} L’accès est disponible, mais l’e-mail n’a pas été accepté.`
+      : `${validation.message} ${delivery.status === "SIMULATED" ? "Le lien et le code sont prêts à être remis directement à l’utilisateur." : "L’envoi a été accepté par le service d’e-mail."}`;
   return success(viewer, message, ["users", "auditLogs"], {
     id,
     kind: "INVITATION",
     identifier: email ?? matricule ?? "",
+    actionPath: authActionPath("INVITATION", invitation.token),
     manualCode: invitation.manualCode,
     expiresAt: invitation.expiresAt.toISOString(),
     deliveryStatus: delivery.status,
@@ -376,7 +378,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
   }
   if (current.status === "INACTIVE" && input.status === "ACTIVE" && !current.activatedAt) {
     const credential = await createAndSendInvitation(id, viewer.id);
-    return success(viewer, `${validation.message} Un nouveau code d’activation a été généré.`, ["users", "auditLogs"], credential);
+    return success(viewer, `${validation.message} Un nouveau lien d’activation et son code ont été générés.`, ["users", "auditLogs"], credential);
   }
   return success(viewer, validation.message, ["users", "auditLogs"]);
 }
@@ -423,7 +425,7 @@ export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTI
   }
   if (status === "ACTIVE" && !current?.activatedAt) {
     const credential = await createAndSendInvitation(id, viewer.id);
-    return success(viewer, "Compte activé et nouveau code d’activation généré.", ["users", "auditLogs"], credential);
+    return success(viewer, "Compte activé et nouvel accès d’activation généré.", ["users", "auditLogs"], credential);
   }
   return success(viewer, status === "ACTIVE" ? "Compte activé." : "Compte désactivé.", ["users", "auditLogs"]);
 }

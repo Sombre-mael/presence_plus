@@ -10,6 +10,7 @@ export function PwaRegistration({ currentVersion }: { currentVersion: string }) 
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
   const reloadingRef = useRef(false);
+  const reloadOnControllerChangeRef = useRef(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [applying, setApplying] = useState(false);
 
@@ -50,7 +51,7 @@ export function PwaRegistration({ currentVersion }: { currentVersion: string }) 
     }
 
     function handleControllerChange() {
-      if (reloadingRef.current) return;
+      if (!reloadOnControllerChangeRef.current || reloadingRef.current) return;
       reloadingRef.current = true;
       window.location.reload();
     }
@@ -95,6 +96,7 @@ export function PwaRegistration({ currentVersion }: { currentVersion: string }) 
       await registration.update();
       const waiting = registration.waiting ?? waitingWorkerRef.current;
       if (waiting) {
+        reloadOnControllerChangeRef.current = true;
         waiting.postMessage({ type: "SKIP_WAITING" });
       } else {
         window.location.reload();

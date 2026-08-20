@@ -24,7 +24,13 @@ test("la navigation se rétracte et conserve son état", async ({ page }) => {
 
 test("un utilisateur peut être créé, persisté et supprimé", async ({ page }) => {
   const { name, email } = uniqueUserFixture();
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/users");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.evaluate(() => Object.defineProperty(navigator, "share", {
+    configurable: true,
+    value: async (data: ShareData) => { Reflect.set(window, "__sharedAccess", data); },
+  }));
   await page.getByRole("button", { name: "Ajouter un utilisateur" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Nom complet").fill(name);
@@ -32,12 +38,25 @@ test("un utilisateur peut être créé, persisté et supprimé", async ({ page }
   await dialog.getByRole("combobox").first().click();
   await page.getByRole("option", { name: "Administrateur" }).click();
   await dialog.getByRole("button", { name: "Ajouter", exact: true }).click();
-  await expect(page.getByText(name).first()).toBeVisible();
+  const accessDialog = page.getByRole("dialog");
+  await expect(accessDialog.getByRole("heading", { name: "Partager l’accès initial" })).toBeVisible();
+  await expect(accessDialog.getByRole("button", { name: "Partager le lien" })).toBeVisible();
+  await expect(accessDialog.getByRole("link", { name: "Ouvrir le lien" })).toHaveAttribute("href", /\/activate-account\?token=/);
+  expect(await accessDialog.evaluate((element) => element.scrollWidth > element.clientWidth + 1)).toBe(false);
+  await accessDialog.getByRole("button", { name: "Partager le lien" }).click();
+  await expect(accessDialog.getByRole("button", { name: "Lien partagé" })).toBeVisible();
+  expect(await page.evaluate(() => String((Reflect.get(window, "__sharedAccess") as ShareData | undefined)?.url))).toContain("/activate-account?token=");
+  await page.evaluate(() => Object.defineProperty(navigator, "share", { configurable: true, value: undefined }));
+  await accessDialog.getByRole("button", { name: "Lien partagé" }).click();
+  await expect(accessDialog.getByRole("button", { name: "Lien copié" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("/activate-account?token=");
+  await accessDialog.getByRole("button", { name: "Terminer" }).click();
+  await expect(page.getByText(name).last()).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("presence-plus:academic-data:v3"))).toBeNull();
 
   await page.reload();
-  await expect(page.getByText(name).first()).toBeVisible();
-  await page.getByText(name).first().click();
+  await expect(page.getByText(name).last()).toBeVisible();
+  await page.getByText(name).last().click();
   await page.getByRole("button", { name: "Supprimer" }).click();
   await page.getByRole("button", { name: "Supprimer définitivement" }).click();
   await expect(page.getByText(name)).toHaveCount(0);

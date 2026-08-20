@@ -20,6 +20,18 @@ describe("password policy", () => {
     expect(result.score).toBeGreaterThanOrEqual(3);
   });
 
+  it("accepte une phrase mémorisable sans règle de composition", () => {
+    const result = evaluatePassword("J aime apprendre");
+    expect(result.valid).toBe(true);
+    expect(result.score).toBeGreaterThanOrEqual(2);
+  });
+
+  it("refuse un mot de passe courant même lorsqu'il est assez long", () => {
+    const result = evaluatePassword("motdepasse2026");
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(" ")).toContain("mots de passe courants");
+  });
+
   it("refuse plus de 72 octets même sous 64 caractères Unicode", () => {
     const result = evaluatePassword("é".repeat(40) + "Quartz!7");
     expect(result.valid).toBe(false);

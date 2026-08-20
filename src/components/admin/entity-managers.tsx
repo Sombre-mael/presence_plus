@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Check, Copy, ExternalLink, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, ShieldOff, Trash2, UserRound } from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, Share2, ShieldOff, Trash2, UserRound } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -172,68 +172,117 @@ function DeleteDialog({
 
 function DetailLine({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 border-b py-3 last:border-0">
+    <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-3 border-b py-3 sm:grid-cols-[120px_minmax(0,1fr)] last:border-0">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="min-w-0 text-sm font-medium">{children}</span>
+      <span className="min-w-0 break-words text-sm font-medium">{children}</span>
     </div>
   );
 }
 
 function AccessCredentialDialog({ credential, onClose }: { credential?: AuthAccessCredential; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "shared" | "failed">("idle");
   if (!credential) return null;
-  const activation = credential.kind === "INVITATION";
-  const workflowPath = activation ? "/activate-account" : "/reset-password";
-  const delivery = credential.deliveryStatus === "ACCEPTED" ? "E-mail accepté par le service d’envoi"
-    : credential.deliveryStatus === "SIMULATED" ? "Code à remettre directement"
-      : credential.deliveryStatus === "FAILED" ? "Échec de l’envoi par e-mail"
+  const activeCredential = credential;
+  const activation = activeCredential.kind === "INVITATION";
+  const delivery = activeCredential.deliveryStatus === "ACCEPTED" ? "E-mail accepté par le service d’envoi"
+    : activeCredential.deliveryStatus === "SIMULATED" ? "Accès à remettre directement"
+      : activeCredential.deliveryStatus === "FAILED" ? "Échec de l’envoi par e-mail"
         : "Aucun e-mail associé";
+
+  function accessUrl() {
+    return new URL(activeCredential.actionPath, window.location.origin).toString();
+  }
+
+  function shareText() {
+    return [
+      "Presence Plus",
+      activation ? "Activez votre compte avec ce lien personnel :" : "Réinitialisez votre mot de passe avec ce lien personnel :",
+      accessUrl(),
+      "Ce lien est utilisable une seule fois. Ne le transférez à personne d’autre.",
+    ].join("\n");
+  }
+
+  async function shareAccess() {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: activation ? "Activation de votre compte Presence Plus" : "Récupération de votre compte Presence Plus",
+          text: shareText(),
+          url: accessUrl(),
+        });
+        setCopyState("shared");
+        return;
+      }
+      await navigator.clipboard.writeText(shareText());
+      setCopyState("copied");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setCopyState("failed");
+    }
+  }
+
+  async function copyInstructions() {
+    try {
+      const instructions = [
+        "Presence Plus",
+        activation ? "Activation de votre compte" : "Récupération de votre compte",
+        `Lien direct : ${accessUrl()}`,
+        "",
+        "En cas de problème avec le lien :",
+        `Page : ${window.location.origin}${activation ? "/activate-account" : "/reset-password"}`,
+        `Identifiant : ${activeCredential.identifier}`,
+        `Code : ${activeCredential.manualCode}`,
+      ].join("\n");
+      await navigator.clipboard.writeText(instructions);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  }
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{activation ? "Accès initial à remettre à l’utilisateur" : "Récupération à remettre à l’utilisateur"}</DialogTitle>
-          <DialogDescription>Ce code ne sera plus affiché après la fermeture. Un nouveau code invalidera immédiatement celui-ci.</DialogDescription>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="px-4 pt-4 pr-12 sm:px-5 sm:pt-5">
+          <DialogTitle>{activation ? "Partager l’accès initial" : "Partager la récupération"}</DialogTitle>
+          <DialogDescription>Le lien et le code ne seront plus affichés après la fermeture. Un nouvel accès invalidera immédiatement celui-ci.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 border bg-muted/30 p-5">
-          <div>
-            <p className="text-xs text-muted-foreground">Identifiant</p>
-            <p className="mt-1 break-all font-medium">{credential.identifier}</p>
+        <div className="min-h-0 space-y-4 overflow-y-auto px-4 pb-2 sm:px-5">
+          <div className="border bg-emerald-50 p-4">
+            <p className="font-medium text-emerald-950">Le moyen le plus rapide</p>
+            <p className="mt-1 text-sm leading-5 text-emerald-900">Partagez le lien personnel. L’utilisateur ouvrira directement l’étape de création du mot de passe.</p>
+            <Button className="mt-4 h-11 w-full" onClick={shareAccess}>
+              {copyState === "shared" ? <Check /> : <Share2 />}
+              {copyState === "shared" ? "Lien partagé" : copyState === "copied" ? "Lien copié" : "Partager le lien"}
+            </Button>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <Link href={activeCredential.actionPath} prefetch={false} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 font-medium text-primary hover:underline">Ouvrir le lien <ExternalLink className="size-3.5" /></Link>
+              <span className="text-muted-foreground">Expire le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lubumbashi" }).format(new Date(activeCredential.expiresAt))}</span>
+            </div>
           </div>
-          <div className="border-t pt-3">
-            <p className="text-xs text-muted-foreground">Code à usage unique</p>
-            <p className="mt-1 font-mono text-2xl font-semibold tracking-normal">{credential.manualCode}</p>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">Expire le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lubumbashi" }).format(new Date(credential.expiresAt))}</p>
+          <Alert>
+            <AlertTitle>Lien personnel et confidentiel</AlertTitle>
+            <AlertDescription>Transmettez-le uniquement à {activeCredential.identifier}. Il fonctionne une seule fois.</AlertDescription>
+          </Alert>
+          <details className="group border bg-muted/20">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-medium marker:hidden">Utiliser le code manuel en secours <span className="text-xs text-muted-foreground group-open:hidden">Afficher</span><span className="hidden text-xs text-muted-foreground group-open:inline">Masquer</span></summary>
+            <div className="space-y-3 border-t px-4 py-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Identifiant</p>
+                <p className="mt-1 break-all font-medium">{activeCredential.identifier}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Code à usage unique</p>
+                <p className="mt-1 break-all font-mono text-xl font-semibold tracking-normal sm:text-2xl">{activeCredential.manualCode}</p>
+              </div>
+              <Button variant="outline" className="h-11 w-full" onClick={copyInstructions}><Copy />Copier le lien et le code</Button>
+            </div>
+          </details>
+          <p className="text-xs text-muted-foreground">{delivery}. L’accès reste utilisable jusqu’à son expiration.</p>
+          {copyState === "failed" ? <Alert variant="destructive"><AlertDescription>Le partage automatique est indisponible. Ouvrez le lien puis partagez-le depuis votre navigateur.</AlertDescription></Alert> : null}
         </div>
-        <Alert>
-          <AlertTitle>{activation ? "Le code n’est pas un mot de passe" : "Le code ouvre la récupération"}</AlertTitle>
-          <AlertDescription>
-            {activation
-              ? "L’utilisateur doit ouvrir la page d’activation, saisir son identifiant et ce code, puis choisir son propre mot de passe. Il pourra ensuite se connecter."
-              : "L’utilisateur doit ouvrir la page de récupération, saisir son identifiant et ce code, puis choisir un nouveau mot de passe."}
-          </AlertDescription>
-        </Alert>
-        <Alert><AlertDescription>{delivery}. Le code reste utilisable jusqu’à son expiration.</AlertDescription></Alert>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
-          <Button variant="outline" asChild>
-            <Link href={workflowPath} target="_blank" rel="noreferrer">Ouvrir la page <ExternalLink /></Link>
-          </Button>
-          <Button onClick={async () => {
-            const instructions = [
-              "Presence Plus",
-              activation ? "Activation de votre compte" : "Récupération de votre compte",
-              `Page : ${window.location.origin}${workflowPath}`,
-              `Identifiant : ${credential.identifier}`,
-              `Code : ${credential.manualCode}`,
-              activation ? "Choisissez ensuite votre mot de passe, puis connectez-vous." : "Choisissez ensuite votre nouveau mot de passe.",
-            ].join("\n");
-            await navigator.clipboard.writeText(instructions);
-            setCopied(true);
-          }}>
-            {copied ? <Check /> : <Copy />}{copied ? "Instructions copiées" : "Copier les instructions"}
-          </Button>
+        <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none p-4 sm:px-5">
+          <Button variant="outline" className="h-11 w-full sm:w-auto" onClick={onClose}>Terminer</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -300,12 +349,13 @@ function UserFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="px-4 pt-4 pr-12 sm:px-5 sm:pt-5">
           <DialogTitle>{user ? "Modifier l’utilisateur" : "Ajouter un utilisateur"}</DialogTitle>
           <DialogDescription>Les champs affichés s’adaptent au rôle sélectionné.</DialogDescription>
         </DialogHeader>
-        <form key={formKey} onSubmit={submit} className="space-y-4">
+        <form key={formKey} onSubmit={submit} className="flex min-h-0 flex-col">
+          <div className="min-h-0 space-y-4 overflow-y-auto px-4 pb-4 sm:px-5">
           {errors.form && <Alert variant="destructive"><AlertDescription>{errors.form}</AlertDescription></Alert>}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
@@ -361,9 +411,10 @@ function UserFormDialog({
               </>
             )}
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Annuler</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Enregistrement..." : user ? "Enregistrer" : "Ajouter"}</Button>
+          </div>
+          <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none p-4 sm:px-5">
+            <Button type="button" variant="outline" className="h-11 w-full sm:w-auto" disabled={saving} onClick={() => onOpenChange(false)}>Annuler</Button>
+            <Button type="submit" className="h-11 w-full sm:w-auto" disabled={saving}>{saving ? "Enregistrement..." : user ? "Enregistrer" : "Ajouter"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -493,7 +544,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
       </div>
 
       <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}>
-        <SheetContent className="w-full sm:max-w-md">
+        <SheetContent className="w-full overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-md">
           {selected && (
             <>
               <SheetHeader>

@@ -32,5 +32,7 @@ describe("PWA versionnée", () => {
     expect(source).toContain('register("/sw.js", { scope: "/", updateViaCache: "none" })');
     expect(source).toContain('type: "SKIP_WAITING"');
     expect(source).toContain('addEventListener("controllerchange"');
+    expect(source).toContain("reloadOnControllerChangeRef.current = true");
+    expect(source).toContain("!reloadOnControllerChangeRef.current");
   });
 });

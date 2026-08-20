@@ -80,9 +80,9 @@ export function LoginForm({ callbackUrl, message }: { callbackUrl?: string; mess
         {pending ? <><LoaderCircle className="animate-spin" />Vérification...</> : "Se connecter"}
       </Button>
       <div className="space-y-3 border-t pt-4 text-center">
-        <p className="text-xs leading-5 text-muted-foreground">Première connexion ? Le code remis par l’administration doit d’abord servir à créer votre mot de passe.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Première connexion ? Ouvrez le lien personnel remis par votre établissement. Le code reste disponible en secours.</p>
         <Button type="button" variant="outline" className="h-11 w-full" asChild>
-          <Link href="/activate-account"><KeyRound />Activer mon compte avec un code</Link>
+          <Link href="/activate-account"><KeyRound />Activer avec un code</Link>
         </Button>
       </div>
       <p className="text-center text-xs leading-5 text-muted-foreground">L’accès est créé par votre établissement. Il n’y a pas d’inscription publique.</p>

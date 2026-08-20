@@ -169,7 +169,7 @@ AUTH_EMAIL_MODE="manual"
 pnpm exec auth secret
 ```
 
-En mode `manual`, les codes d'activation et de récupération sont remis directement par l'administration. Lorsqu'un domaine d'envoi vérifié sera disponible, renseigner `RESEND_API_KEY` et `AUTH_EMAIL_FROM`, puis passer `AUTH_EMAIL_MODE` à `live`.
+En mode `manual`, l'administration remet un lien personnel à usage unique. Un code d'activation ou de récupération reste disponible en secours. Lorsqu'un domaine d'envoi vérifié sera disponible, renseigner `RESEND_API_KEY` et `AUTH_EMAIL_FROM`, puis passer `AUTH_EMAIL_MODE` à `live`.
 
 Préparer Prisma et démarrer l'application :
 

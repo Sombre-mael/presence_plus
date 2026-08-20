@@ -40,6 +40,24 @@ test("la connexion reste accessible et sans débordement sur les écrans princip
   }
 });
 
+test("l’activation manuelle reste utilisable sur les écrans principaux", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  for (const viewport of [
+    { width: 360, height: 640 },
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/activate-account");
+    await expect(page.getByRole("heading", { name: "Activer votre compte" })).toBeVisible();
+    await expect(page.getByText("1. Vérifier le code")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuer" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  }
+});
+
 test("les trois rôles se connectent et restent dans leur périmètre", async ({ page }) => {
   await loginAs(page, "Aline Kabeya");
   await expect(page).toHaveURL(/\/admin\/dashboard/);
@@ -120,13 +138,13 @@ test("un mot de passe initial bloque l'espace métier", async ({ page }) => {
 test("une invitation est à usage unique et active le compte", async ({ page }) => {
   const user = await createAuthUserFixture({ activated: false });
   const token = await createAuthTokenFixture(user.id, "INVITATION");
-  const password = "Silex!Boussole8-Lumiere-Mangue";
+  const password = "J aime apprendre";
   try {
     await page.goto(`/activate-account?token=${encodeURIComponent(token)}`);
     await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);
     await page.getByLabel("Confirmer le nouveau mot de passe", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Activer mon compte" }).click();
-    await expect(page).toHaveURL(/\/login\?notice=activated/, { timeout: 60_000 });
+    await expect(page).toHaveURL(/\/admin\/dashboard/, { timeout: 60_000 });
     await page.goto(`/activate-account?token=${encodeURIComponent(token)}`);
     await expect(page.getByLabel("Code à usage unique")).toBeVisible();
   } finally {
@@ -140,7 +158,7 @@ test("un jeton de réinitialisation expiré est refusé", async ({ page }) => {
   try {
     await page.goto(`/reset-password?token=${encodeURIComponent(token)}`);
     await expect(page.getByLabel("Code à usage unique")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Enregistrer le mot de passe" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuer" })).toBeVisible();
   } finally {
     await cleanupAuthUserFixture(user.id);
   }
@@ -149,21 +167,17 @@ test("un jeton de réinitialisation expiré est refusé", async ({ page }) => {
 test("un étudiant sans e-mail active son compte avec son matricule et un code", async ({ page }) => {
   const user = await createStudentWithoutEmailFixture();
   const code = await createAuthCodeFixture(user.id, "INVITATION");
-  const password = "Silex!Boussole8-Lumiere-Mangue";
+  const password = "J aime apprendre";
   try {
-    await page.goto("/login");
-    await page.getByRole("link", { name: "Activer mon compte avec un code" }).click();
-    await expect(page).toHaveURL(/\/activate-account/);
+    await page.goto("/activate-account");
     await page.getByLabel("E-mail ou matricule").fill(user.matricule);
     await page.getByLabel("Code à usage unique").fill(code);
+    await page.getByRole("button", { name: "Continuer" }).click();
+    await expect(page.getByText(/Code vérifié pour/)).toBeVisible();
     await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);
     await page.getByLabel("Confirmer le nouveau mot de passe", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Activer mon compte" }).click();
-    await expect(page).toHaveURL(/\/login\?notice=activated/, { timeout: 60_000 });
-    await page.getByLabel("E-mail ou matricule").fill(user.matricule);
-    await page.getByLabel("Mot de passe", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await expect(page).toHaveURL(/\/student\/dashboard/);
+    await expect(page).toHaveURL(/\/student\/dashboard/, { timeout: 60_000 });
   } finally {
     await cleanupAuthUserFixture(user.id);
   }
