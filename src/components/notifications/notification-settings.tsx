@@ -15,16 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { getBrowserPushSubscription, subscribeBrowserToPush, supportsWebPush } from "@/lib/web-push.client";
 import type { NotificationCenterData, NotificationPreferences, NotificationSummary } from "@/types/notifications";
 
 type PushState = "checking" | "unsupported" | "unconfigured" | "denied" | "disabled" | "enabled";
-
-function applicationServerKey(value: string) {
-  const padding = "=".repeat((4 - value.length % 4) % 4);
-  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const bytes = window.atob(base64);
-  return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
-}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", {
@@ -63,12 +57,11 @@ export function NotificationSettings({
     }), 0);
     async function inspect() {
       if (!vapidPublicKey) return setPushState("unconfigured");
-      if (!window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      if (!supportsWebPush()) {
         return setPushState("unsupported");
       }
       if (Notification.permission === "denied") return setPushState("denied");
-      const registration = await navigator.serviceWorker.getRegistration("/");
-      const subscription = await registration?.pushManager.getSubscription();
+      const subscription = await getBrowserPushSubscription();
       setPushState(subscription ? "enabled" : "disabled");
     }
     void inspect();
@@ -80,25 +73,8 @@ export function NotificationSettings({
     startTransition(async () => {
       try {
         if (!vapidPublicKey) throw new Error("Le service push n’est pas encore configuré.");
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") {
-          setPushState(permission === "denied" ? "denied" : "disabled");
-          throw new Error("L’autorisation n’a pas été accordée.");
-        }
-        const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
-        const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: applicationServerKey(vapidPublicKey),
-        });
-        const serialized = subscription.toJSON();
-        if (!serialized.endpoint || !serialized.keys?.p256dh || !serialized.keys.auth) {
-          throw new Error("Le navigateur n’a pas retourné un abonnement complet.");
-        }
-        const result = await savePushSubscriptionAction({
-          endpoint: serialized.endpoint,
-          expirationTime: serialized.expirationTime,
-          keys: { p256dh: serialized.keys.p256dh, auth: serialized.keys.auth },
-        });
+        const subscription = await subscribeBrowserToPush(vapidPublicKey, true);
+        const result = await savePushSubscriptionAction(subscription);
         if (!result.ok) throw new Error(result.message);
         setPushState("enabled");
         setMessage({ text: result.message, error: false });
@@ -112,8 +88,7 @@ export function NotificationSettings({
     setMessage(undefined);
     startTransition(async () => {
       try {
-        const registration = await navigator.serviceWorker.getRegistration("/");
-        const subscription = await registration?.pushManager.getSubscription();
+        const subscription = await getBrowserPushSubscription();
         if (subscription) {
           const result = await removePushSubscriptionAction(subscription.endpoint);
           if (!result.ok) throw new Error(result.message);

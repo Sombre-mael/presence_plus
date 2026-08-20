@@ -28,6 +28,15 @@ export async function savePushSubscriptionAction(input: BrowserPushSubscriptionI
   const parsed = subscriptionSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, message: "Cet abonnement push n’est pas valide." };
   const userAgent = (await headers()).get("user-agent")?.slice(0, 512) ?? null;
+  const expiresAt = parsed.data.expirationTime ? new Date(parsed.data.expirationTime) : null;
+  const existing = await prisma.pushSubscription.findUnique({ where: { endpoint: parsed.data.endpoint } });
+  const unchanged = existing
+    && existing.userId === viewer.id
+    && existing.p256dh === parsed.data.keys.p256dh
+    && existing.auth === parsed.data.keys.auth
+    && existing.revokedAt === null
+    && existing.expiresAt?.getTime() === expiresAt?.getTime();
+  if (unchanged) return { ok: true as const, message: "Notifications déjà actives sur cet appareil." };
   await prisma.pushSubscription.upsert({
     where: { endpoint: parsed.data.endpoint },
     create: {
@@ -36,14 +45,14 @@ export async function savePushSubscriptionAction(input: BrowserPushSubscriptionI
       p256dh: parsed.data.keys.p256dh,
       auth: parsed.data.keys.auth,
       userAgent,
-      expiresAt: parsed.data.expirationTime ? new Date(parsed.data.expirationTime) : null,
+      expiresAt,
     },
     update: {
       userId: viewer.id,
       p256dh: parsed.data.keys.p256dh,
       auth: parsed.data.keys.auth,
       userAgent,
-      expiresAt: parsed.data.expirationTime ? new Date(parsed.data.expirationTime) : null,
+      expiresAt,
       revokedAt: null,
     },
   });

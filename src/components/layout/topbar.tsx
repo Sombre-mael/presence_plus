@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { removePushSubscriptionAction } from "@/actions/notification.actions";
+import { getBrowserPushSubscription } from "@/lib/web-push.client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,9 +71,7 @@ export function Topbar({
     .join("");
 
   async function revokeCurrentDevicePush() {
-    if (!("serviceWorker" in navigator)) return;
-    const registration = await navigator.serviceWorker.getRegistration("/");
-    const subscription = await registration?.pushManager.getSubscription();
+    const subscription = await getBrowserPushSubscription();
     if (!subscription) return;
     const result = await removePushSubscriptionAction(subscription.endpoint);
     if (result.ok) await subscription.unsubscribe();

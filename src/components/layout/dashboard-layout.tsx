@@ -16,6 +16,7 @@ import {
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { RouteTransition } from "./route-transition";
+import { PushPermissionPrompt } from "@/components/notifications/push-permission-prompt";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -72,6 +73,7 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
           <RouteTransition>{children}</RouteTransition>
         </main>
       </div>
+      <PushPermissionPrompt vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY} />
     </div>
   );
 }
