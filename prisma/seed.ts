@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { disconnectPrisma, prisma } from "../scripts/prisma";
 import { evaluatePassword } from "../src/lib/password-policy";
 import {
+  AdminLevel,
   AttendanceSource,
   AttendanceStatus,
   Role,
@@ -70,6 +71,7 @@ async function main() {
       name: user.name,
       email: user.email,
       role: user.role,
+      adminLevel: user.role === Role.ADMIN ? AdminLevel.SUPER : null,
       status: user.status,
       matricule: user.matricule,
     };

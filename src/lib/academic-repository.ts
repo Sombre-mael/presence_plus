@@ -116,6 +116,7 @@ export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<Ac
     name: user.name,
     email: user.email,
     role: user.role,
+    adminLevel: user.adminLevel ?? undefined,
     status: user.status,
     promotionId: user.promotionId ?? undefined,
     matricule: user.matricule ?? undefined,

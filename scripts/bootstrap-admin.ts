@@ -35,7 +35,7 @@ async function main() {
 
   await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
-      data: { name, email, role: "ADMIN", status: "ACTIVE", passwordHash, activatedAt: null, mustChangePassword: true },
+      data: { name, email, role: "ADMIN", adminLevel: "SUPER", status: "ACTIVE", passwordHash, activatedAt: null, mustChangePassword: true },
     });
     await tx.authToken.create({
       data: {

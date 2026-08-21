@@ -11,7 +11,12 @@ model User {
   id                     String                        @id @default(cuid())
   matricule              String?                       @unique
   name                   String
+  preferredName          String?
   email                  String                        @unique
+  phone                  String?
+  avatarUrl              String?
+  avatarColor            AvatarColor                   @default(EMERALD)
+  adminLevel             AdminLevel?
   passwordHash           String
   role                   Role
   status                 UserStatus
@@ -38,10 +43,38 @@ model User {
   notifications          Notification[]
   notificationPreference NotificationPreference?
   pushSubscriptions      PushSubscription[]
+  profilePhotoSubmissions ProfilePhotoSubmission[]      @relation("ProfilePhotoOwner")
+  profilePhotoReviews     ProfilePhotoSubmission[]      @relation("ProfilePhotoReviewer")
   promotion              Promotion?                    @relation(fields: [promotionId], references: [id])
 
   @@index([role])
   @@index([status])
+}
+
+model ProfilePhotoSubmission {
+  id           String             @id @default(cuid())
+  userId       String
+  blobUrl      String
+  status       ProfilePhotoStatus @default(PENDING)
+  submittedAt  DateTime           @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewReason String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  user         User               @relation("ProfilePhotoOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?              @relation("ProfilePhotoReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, submittedAt])
+  @@index([userId, status])
+  @@index([reviewedById])
+}
+
+model SystemSetting {
+  id                        String   @id @default("default")
+  profilePhotoEnforcementAt DateTime
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 }
 
 model AuthToken {
@@ -292,6 +325,27 @@ enum Role {
   STUDENT
   TEACHER
   ADMIN
+}
+
+enum AdminLevel {
+  STANDARD
+  SUPER
+}
+
+enum ProfilePhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REPLACED
+  CANCELLED
+}
+
+enum AvatarColor {
+  EMERALD
+  BLUE
+  AMBER
+  ROSE
+  SLATE
 }
 
 enum UserStatus {

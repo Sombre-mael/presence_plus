@@ -19,9 +19,11 @@ import {
   PanelLeftOpen,
   ScrollText,
   MessageSquareText,
+  Images,
+  Settings,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import type { Role } from "@/types";
+import type { AdminLevel, Role } from "@/types";
 import { cn } from "@/lib/utils";
 import { SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ interface NavItem {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  superOnly?: boolean;
 }
 
 const roleLabels: Record<Role, string> = {
@@ -48,6 +51,8 @@ const navigation: Record<Role, NavItem[]> = {
     { href: "/admin/sessions", label: "Sessions", icon: CalendarCheck },
     { href: "/admin/statistics", label: "Statistiques", icon: BarChart3 },
     { href: "/admin/audit", label: "Journal d’activité", icon: ScrollText },
+    { href: "/admin/photo-reviews", label: "Vérification des photos", icon: Images },
+    { href: "/admin/system", label: "Administration système", icon: Settings, superOnly: true },
   ],
   TEACHER: [
     { href: "/teacher/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
@@ -63,13 +68,14 @@ const navigation: Record<Role, NavItem[]> = {
 
 interface SidebarProps {
   role: Role;
+  adminLevel?: AdminLevel;
   mobile?: boolean;
   collapsed?: boolean;
   onToggle?: () => void;
   syncStatus?: "synced" | "syncing" | "error";
 }
 
-export function Sidebar({ role, mobile = false, collapsed = false, onToggle, syncStatus = "synced" }: SidebarProps) {
+export function Sidebar({ role, adminLevel, mobile = false, collapsed = false, onToggle, syncStatus = "synced" }: SidebarProps) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
   const primaryHref = role === "TEACHER" ? "/teacher/sessions/new" : "/student/check-in";
@@ -123,7 +129,7 @@ export function Sidebar({ role, mobile = false, collapsed = false, onToggle, syn
             )}
           </div>
         )}
-        {navigation[role].map((item) => {
+        {navigation[role].filter((item) => !item.superOnly || adminLevel === "SUPER").map((item) => {
           const active =
             pathname === item.href ||
             (item.href.endsWith("/sessions") && pathname.startsWith(`${item.href}/`) && !pathname.endsWith("/new"));

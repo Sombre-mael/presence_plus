@@ -13,5 +13,14 @@ export default async function AccountSecurityPage() {
   if (!viewer) redirect("/login?callbackUrl=/account/security");
   if (viewer.mustChangePassword) redirect("/change-password");
   const sessions = await listActiveAuthSessions(viewer.id, viewer.authSessionId);
-  return <main className="min-h-screen bg-muted/30 p-4 sm:p-8"><div className="mx-auto max-w-3xl"><PageHeader title="Sécurité du compte" description={`Compte de ${viewer.name} · ${viewer.email}`} action={<Button asChild variant="outline"><Link href={roleHome(viewer.role)}><ArrowLeft />Retour à mon espace</Link></Button>} /><AccountSecurity initialSessions={sessions} /></div></main>;
+  return (
+    <>
+      <PageHeader
+        title="Sécurité du compte"
+        description={`Compte de ${viewer.name} · ${viewer.email}`}
+        action={<Button asChild variant="outline"><Link href={roleHome(viewer.role)}><ArrowLeft />Retour à mon espace</Link></Button>}
+      />
+      <AccountSecurity initialSessions={sessions} />
+    </>
+  );
 }

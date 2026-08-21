@@ -59,6 +59,10 @@ Les séances, présences, corrections et décisions restent consultables. Les op
 
 Chaque espace correspond au rôle de son utilisateur. L'administration supervise, l'enseignant pilote ses séances et l'étudiant consulte ou signale une erreur.
 
+### Un compte personnel sans altérer les données académiques
+
+Chaque utilisateur retrouve son profil, ses informations de rôle et ses affectations. Il peut soumettre une photo recadrée, choisir un prénom d'usage, renseigner un téléphone facultatif et personnaliser la couleur de secours de son avatar. Les photos sont vérifiées humainement avant publication, tandis que le nom officiel, l'e-mail, le matricule, la promotion et les cours restent sous le contrôle de l'administration.
+
 ### Des corrections traçables
 
 Une présence clôturée ne change pas silencieusement. Toute correction exige un motif et conserve les informations de décision utiles au suivi.
@@ -77,6 +81,8 @@ L'espace administrateur permet de structurer et superviser le fonctionnement aca
 - statistiques par période, promotion et cours ;
 - exports CSV filtrés ;
 - consultation du journal d'activité.
+- validation humaine des photos de profil ;
+- séparation entre administrateurs standards et super administrateurs.
 
 ### Enseignant
 
@@ -117,6 +123,8 @@ Presence Plus applique plusieurs règles afin de protéger la cohérence des don
 - la clôture crée automatiquement les absences manquantes ;
 - les suppressions sont bloquées lorsqu'un historique dépend de l'élément ;
 - les changements importants sont inscrits dans le journal d'activité ;
+- le pointage étudiant peut exiger une photo préalablement approuvée après une période de grâce ;
+- le dernier super administrateur actif ne peut pas être désactivé ou rétrogradé ;
 - les dates métier sont interprétées dans le fuseau `Africa/Lubumbashi`.
 
 ## Exploitation et accès
@@ -124,6 +132,8 @@ Presence Plus applique plusieurs règles afin de protéger la cohérence des don
 Les parcours administrateur, enseignant et étudiant utilisent Prisma et PostgreSQL comme source de vérité. L'accès est assuré par Auth.js avec des sessions de huit heures, un contrôle du rôle côté serveur et un registre de sessions permettant de révoquer les appareils connectés.
 
 Il n'existe pas d'inscription publique. Le premier administrateur est créé par une commande contrôlée, puis l'administration invite les enseignants et étudiants. Une adresse e-mail unique est obligatoire pour chaque compte : elle reçoit le lien personnel d'activation et les instructions de récupération. Le matricule étudiant reste disponible comme identifiant de connexion secondaire. Un code à usage unique peut servir de solution de secours avec l'adresse e-mail du compte.
+
+Le premier administrateur reçoit le niveau `SUPER`. Il peut déléguer ce niveau, gérer les autres administrateurs et révoquer leurs sessions. Les administrateurs standards gèrent les étudiants, enseignants, référentiels académiques et vérifications de photos, sans pouvoir modifier un compte administrateur.
 
 Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un secret Auth dédié, d'une base PostgreSQL migrée et d'un domaine d'envoi Resend vérifié. Le mode d'e-mail simulé est automatiquement refusé sur Vercel en production.
 
@@ -184,6 +194,14 @@ AUTH_EMAIL_REPLY_TO="adresse-verifiee@gmail.com"
 
 Resend reste disponible avec `AUTH_EMAIL_PROVIDER="resend"`, `RESEND_API_KEY` et `AUTH_EMAIL_FROM` lorsqu'un domaine d'envoi vérifié est disponible. Les secrets des fournisseurs doivent rester dans les variables d'environnement du serveur et de Vercel.
 
+Les photos vérifiées utilisent un store **privé** Vercel Blob. Elles sont servies par une route authentifiée et ne sont jamais exposées par une URL publique. Connecter un store Blob privé au projet, puis fournir uniquement côté serveur :
+
+```env
+BLOB_READ_WRITE_TOKEN="..."
+```
+
+Les images sont recadrées dans le navigateur, réencodées en WebP sans métadonnées côté serveur, puis soumises à la validation d'un administrateur. Le jeton Blob ne doit jamais être préfixé par `NEXT_PUBLIC_`.
+
 Pour activer les notifications push Web sur les appareils autorisés, générer une seule paire de clés VAPID :
 
 ```bash
@@ -214,7 +232,7 @@ Pour une nouvelle installation sans administrateur, créer le premier compte san
 pnpm auth:bootstrap-admin -- --name "Nom Administrateur" --email "admin@etablissement.cd"
 ```
 
-La commande affiche une seule fois un code d'activation valable 48 heures et refuse toute exécution dès qu'un administrateur existe.
+La commande crée le premier super administrateur, affiche une seule fois un code d'activation valable 48 heures et refuse toute exécution dès qu'un administrateur existe.
 
 Si un administrateur existant ne peut plus accéder à son compte et que l'e-mail transactionnel n'est pas encore disponible, un opérateur ayant accès aux secrets d'exploitation peut émettre un code de récupération auditée valable 30 minutes :
 
@@ -267,7 +285,9 @@ e2e/              Parcours Playwright
 
 ## Déploiement
 
-Le déploiement de production utilise Vercel pour l'application et PostgreSQL pour les données. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. Les trois variables VAPID sont également requises lorsque le push est activé. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
+Le déploiement de production utilise Vercel pour l'application et PostgreSQL pour les données. Les variables `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` et `AUTH_EMAIL_MODE` doivent être définies uniquement dans l'environnement de production. `BLOB_READ_WRITE_TOKEN` doit appartenir à un store Blob privé lorsque les photos de profil sont activées. Les trois variables VAPID sont également requises lorsque le push est activé. Les variables E2E et de seed restent réservées aux environnements isolés et ne doivent jamais être ajoutées au projet Vercel de production.
+
+Le build Vercel exécute `pnpm db:status` avant Next.js. Une migration absente bloque ainsi le déploiement avant qu’un code incompatible avec le schéma ne soit mis en ligne. Les migrations de production restent une opération contrôlée et ne sont jamais appliquées automatiquement pendant le build.
 
 ## Licence
 

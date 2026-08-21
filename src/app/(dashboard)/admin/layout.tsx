@@ -15,7 +15,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const collapsed = (await cookies()).get("presence-plus-admin-sidebar")?.value === "collapsed";
   const initialState = await getAcademicSnapshot(viewer);
   return (
-    <AdminDataProvider initialState={initialState} viewerId={viewer.id}>
+    <AdminDataProvider initialState={initialState} viewerId={viewer.id} viewerAdminLevel={viewer.adminLevel}>
       <AdminShell user={viewer} initialSidebarCollapsed={collapsed}>{children}</AdminShell>
     </AdminDataProvider>
   );

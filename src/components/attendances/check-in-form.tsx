@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   Camera,
@@ -15,7 +16,7 @@ import {
   UserRound,
 } from "lucide-react";
 import type { IScannerControls } from "@zxing/browser";
-import type { CheckInPreview, CheckInValidationResult } from "@/types/student";
+import type { CheckInErrorCode, CheckInPreview, CheckInValidationResult } from "@/types/student";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export function CheckInForm() {
   const [code, setCode] = useState("");
   const [preview, setPreview] = useState<CheckInPreview | null>(null);
   const [message, setMessage] = useState("");
+  const [errorCode, setErrorCode] = useState<CheckInErrorCode>();
   const [alreadyRecorded, setAlreadyRecorded] = useState(false);
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
 
@@ -51,9 +53,11 @@ export function CheckInForm() {
   function acceptValidation(result: CheckInValidationResult) {
     if (!result.ok) {
       setMessage(result.message);
+      setErrorCode(result.code);
       setFlow("error");
       return;
     }
+    setErrorCode(undefined);
     setPreview(result.preview);
     setAlreadyRecorded(result.alreadyRecorded);
     if (result.alreadyRecorded) {
@@ -67,6 +71,7 @@ export function CheckInForm() {
   async function startCamera() {
     stopCamera();
     setMessage("");
+    setErrorCode(undefined);
     setFlow("requesting");
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("camera-unavailable");
@@ -117,6 +122,7 @@ export function CheckInForm() {
     }
     if (!result.ok) {
       setMessage(result.message);
+      setErrorCode(result.code);
       if (result.code === "NETWORK_ERROR") {
         setFlow("preview");
       } else {
@@ -137,6 +143,7 @@ export function CheckInForm() {
     setFlow("idle");
     setPreview(null);
     setMessage("");
+    setErrorCode(undefined);
     setCode("");
     setAlreadyRecorded(false);
   }
@@ -212,7 +219,19 @@ export function CheckInForm() {
                 </form>
               </TabsContent>
             </Tabs>
-            {flow === "error" && <Alert variant="destructive" className="mt-4"><AlertTitle>Pointage impossible</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>}
+            {flow === "error" && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertTitle>Pointage impossible</AlertTitle>
+                <AlertDescription>
+                  <span className="block">{message}</span>
+                  {errorCode === "PHOTO_REQUIRED" ? (
+                    <Button asChild variant="outline" className="mt-3 min-h-11 border-red-300 bg-background text-foreground">
+                      <Link href="/account/profile">Soumettre ma photo</Link>
+                    </Button>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

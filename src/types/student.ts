@@ -44,6 +44,7 @@ export type CheckInErrorCode =
   | "ALREADY_RECORDED"
   | "PREVIEW_EXPIRED"
   | "NETWORK_ERROR"
+  | "PHOTO_REQUIRED"
   | "STUDENT_INACTIVE";
 
 export interface CheckInPreview {

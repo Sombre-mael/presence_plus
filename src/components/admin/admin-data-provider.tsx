@@ -48,6 +48,7 @@ import type {
   CorrectionResolutionInput,
   StudentCheckInInput,
 } from "@/types/student";
+import type { AdminLevel } from "@/types";
 import type { AttendanceSource } from "@/types";
 import { Button } from "@/components/ui/button";
 import { canApplySyncResponse } from "@/lib/sync-domain";
@@ -65,6 +66,7 @@ type UserAccessResult = Promise<MutationResult & { value?: UserAccessMutationVal
 export interface AcademicDataContextValue {
   state: AcademicDataState;
   viewerId: string;
+  viewerAdminLevel?: AdminLevel;
   hydrated: boolean;
   pending: boolean;
   isPending: (key?: string) => boolean;
@@ -72,11 +74,11 @@ export interface AcademicDataContextValue {
   anomalies: ReturnType<typeof getAdminAnomalies>;
   createUser: (input: AdminUserInput) => UserAccessResult;
   updateUser: (id: string, input: AdminUserInput) => UserAccessResult;
-  deleteUser: (id: string) => AsyncResult;
-  setUserStatus: (id: string, status: "ACTIVE" | "INACTIVE") => UserAccessResult;
-  resendInvitation: (id: string) => Promise<AuthActionResult<AuthAccessCredential>>;
-  sendPasswordReset: (id: string) => Promise<AuthActionResult<AuthAccessCredential>>;
-  revokeUserSessions: (id: string) => AsyncResult;
+  deleteUser: (id: string, currentPassword?: string) => AsyncResult;
+  setUserStatus: (id: string, status: "ACTIVE" | "INACTIVE", currentPassword?: string) => UserAccessResult;
+  resendInvitation: (id: string, currentPassword?: string) => Promise<AuthActionResult<AuthAccessCredential>>;
+  sendPasswordReset: (id: string, currentPassword?: string) => Promise<AuthActionResult<AuthAccessCredential>>;
+  revokeUserSessions: (id: string, currentPassword?: string) => AsyncResult;
   createPromotion: (input: AdminPromotionInput) => AsyncResult;
   updatePromotion: (id: string, input: AdminPromotionInput) => AsyncResult;
   deletePromotion: (id: string) => AsyncResult;
@@ -103,7 +105,7 @@ export interface AcademicDataContextValue {
 
 const AcademicDataContext = createContext<AcademicDataContextValue | null>(null);
 
-export function AdminDataProvider({ children, initialState, viewerId }: { children: React.ReactNode; initialState?: AcademicDataState; viewerId: string }) {
+export function AdminDataProvider({ children, initialState, viewerId, viewerAdminLevel }: { children: React.ReactNode; initialState?: AcademicDataState; viewerId: string; viewerAdminLevel?: AdminLevel }) {
   const [state, setState] = useState<AcademicDataState>(() => initialState ?? { version: 3, users: [], promotions: [], courses: [], sessions: [], attendances: [], correctionRequests: [], auditLogs: [] });
   const [hydrated, setHydrated] = useState(Boolean(initialState));
   const [pendingCount, setPendingCount] = useState(0);
@@ -241,8 +243,8 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
 
   const createUser = useCallback((input: AdminUserInput) => run(createUserAction(input), "user:create"), [run]);
   const updateUser = useCallback((id: string, input: AdminUserInput) => run(updateUserAction(id, input), `user:${id}:update`), [run]);
-  const deleteUser = useCallback((id: string) => run(deleteUserAction(id), `user:${id}:delete`), [run]);
-  const setUserStatus = useCallback((id: string, status: "ACTIVE" | "INACTIVE") => run(setUserStatusAction(id, status), `user:${id}:status`), [run]);
+  const deleteUser = useCallback((id: string, currentPassword?: string) => run(deleteUserAction(id, currentPassword), `user:${id}:delete`), [run]);
+  const setUserStatus = useCallback((id: string, status: "ACTIVE" | "INACTIVE", currentPassword?: string) => run(setUserStatusAction(id, status, currentPassword), `user:${id}:status`), [run]);
   const runAuth = useCallback(async <T,>(request: Promise<AuthActionResult<T>>, key: string) => {
     setPendingCount((count) => count + 1);
     setPendingKeys((current) => [...current, key]);
@@ -262,9 +264,9 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
       setPendingKeys((current) => current.filter((item) => item !== key));
     }
   }, [notify, notifyError, reload]);
-  const resendInvitation = useCallback((id: string) => runAuth(resendInvitationAction(id), `user:${id}:invite`), [runAuth]);
-  const sendPasswordReset = useCallback((id: string) => runAuth(sendPasswordResetAction(id), `user:${id}:reset-password`), [runAuth]);
-  const revokeUserSessions = useCallback((id: string) => runAuth(revokeUserSessionsAction(id), `user:${id}:revoke`), [runAuth]);
+  const resendInvitation = useCallback((id: string, currentPassword?: string) => runAuth(resendInvitationAction(id, currentPassword), `user:${id}:invite`), [runAuth]);
+  const sendPasswordReset = useCallback((id: string, currentPassword?: string) => runAuth(sendPasswordResetAction(id, currentPassword), `user:${id}:reset-password`), [runAuth]);
+  const revokeUserSessions = useCallback((id: string, currentPassword?: string) => runAuth(revokeUserSessionsAction(id, currentPassword), `user:${id}:revoke`), [runAuth]);
   const createPromotion = useCallback((input: AdminPromotionInput) => run(createPromotionAction(input), "promotion:create"), [run]);
   const updatePromotion = useCallback((id: string, input: AdminPromotionInput) => run(updatePromotionAction(id, input), `promotion:${id}:update`), [run]);
   const deletePromotion = useCallback((id: string) => run(deletePromotionAction(id), `promotion:${id}:delete`), [run]);
@@ -327,6 +329,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
   const value = useMemo<AcademicDataContextValue>(() => ({
     state,
     viewerId,
+    viewerAdminLevel,
     hydrated,
     pending: pendingCount > 0,
     isPending: (key?: string) => key ? pendingKeys.includes(key) : pendingKeys.length > 0,
@@ -361,7 +364,7 @@ export function AdminDataProvider({ children, initialState, viewerId }: { childr
     notify,
     syncStatus,
     lastSyncedAt,
-  }), [state, viewerId, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
+  }), [state, viewerId, viewerAdminLevel, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
 
   return (
     <AcademicDataContext.Provider value={value}>

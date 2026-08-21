@@ -107,6 +107,7 @@ export async function createAuthUserFixture(options: {
   activated?: boolean;
   mustChangePassword?: boolean;
   role?: "ADMIN" | "TEACHER" | "STUDENT";
+  adminLevel?: "STANDARD" | "SUPER";
   password?: string;
 } = {}) {
   const pool = createE2EPool();
@@ -119,9 +120,9 @@ export async function createAuthUserFixture(options: {
   try {
     await assertE2EDatabase(pool);
     await pool.query(
-      `INSERT INTO "User" (id, name, email, "passwordHash", role, status, "activatedAt", "mustChangePassword", "passwordChangedAt", "sessionVersion", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [id, e2eLabel(`Compte Auth ${suffix}`), email, passwordHash, options.role ?? "ADMIN", options.status ?? "ACTIVE", activated ? new Date() : null, options.mustChangePassword ?? false],
+      `INSERT INTO "User" (id, name, email, "passwordHash", role, "adminLevel", status, "activatedAt", "mustChangePassword", "passwordChangedAt", "sessionVersion", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $8, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, e2eLabel(`Compte Auth ${suffix}`), email, passwordHash, options.role ?? "ADMIN", (options.role ?? "ADMIN") === "ADMIN" ? options.adminLevel ?? "STANDARD" : null, options.status ?? "ACTIVE", activated ? new Date() : null, options.mustChangePassword ?? false],
     );
     return { id, email, password };
   } finally {

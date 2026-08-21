@@ -289,7 +289,7 @@ function AccessCredentialDialog({ credential, onClose }: { credential?: AuthAcce
   );
 }
 
-function RowActions({ onView, onEdit, onDelete, deleteDisabled = false }: { onView: () => void; onEdit: () => void; onDelete: () => void; deleteDisabled?: boolean }) {
+function RowActions({ onView, onEdit, onDelete, deleteDisabled = false, editDisabled = false }: { onView: () => void; onEdit: () => void; onDelete: () => void; deleteDisabled?: boolean; editDisabled?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -297,7 +297,7 @@ function RowActions({ onView, onEdit, onDelete, deleteDisabled = false }: { onVi
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={onView}><Eye />Consulter</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onEdit}><Pencil />Modifier</DropdownMenuItem>
+        <DropdownMenuItem disabled={editDisabled} onSelect={onEdit}><Pencil />{editDisabled ? "Modification réservée" : "Modifier"}</DropdownMenuItem>
         <DropdownMenuItem variant="destructive" disabled={deleteDisabled} onSelect={onDelete}><Trash2 />{deleteDisabled ? "Suppression indisponible" : "Supprimer"}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -315,7 +315,7 @@ function UserFormDialog({
   user?: AdminUser;
   onCredential: (credential: AuthAccessCredential) => void;
 }) {
-  const { state, createUser, updateUser, isPending } = useAdminData();
+  const { state, viewerAdminLevel, createUser, updateUser, isPending } = useAdminData();
   const [role, setRole] = useState<Role>(user?.role ?? "STUDENT");
   const [status, setStatus] = useState<UserStatus>(user?.status ?? "ACTIVE");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -334,6 +334,7 @@ function UserFormDialog({
       status,
       promotionId: role === "STUDENT" ? String(data.get("promotionId") ?? "") : undefined,
       matricule: role === "STUDENT" ? String(data.get("matricule") ?? "") : undefined,
+      currentPassword: role === "ADMIN" || user?.role === "ADMIN" ? String(data.get("currentPassword") ?? "") : undefined,
     };
     const result = await (user ? updateUser(user.id, input) : createUser(input));
     if (!result.ok) {
@@ -374,7 +375,7 @@ function UserFormDialog({
               <Select name="role" value={role} onValueChange={(value) => setRole(value as Role)}>
                 <SelectTrigger id="user-role" className="w-full" aria-invalid={Boolean(errors.role)}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ADMIN">Administrateur</SelectItem>
+                  {viewerAdminLevel === "SUPER" ? <SelectItem value="ADMIN">Administrateur</SelectItem> : null}
                   <SelectItem value="TEACHER">Enseignant</SelectItem>
                   <SelectItem value="STUDENT">Étudiant</SelectItem>
                 </SelectContent>
@@ -411,6 +412,14 @@ function UserFormDialog({
                 </div>
               </>
             )}
+            {(role === "ADMIN" || user?.role === "ADMIN") && viewerAdminLevel === "SUPER" ? (
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="user-current-password">Votre mot de passe actuel</Label>
+                <Input id="user-current-password" name="currentPassword" type="password" autoComplete="current-password" aria-invalid={Boolean(errors.currentPassword)} required />
+                <p className="text-xs text-muted-foreground">Cette confirmation protège les comptes administrateurs.</p>
+                <FieldMessage message={errors.currentPassword} />
+              </div>
+            ) : null}
           </div>
           </div>
           <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none p-4 sm:px-5">
@@ -427,7 +436,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { state, viewerId, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, isPending } = useAdminData();
+  const { state, viewerId, viewerAdminLevel, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, isPending } = useAdminData();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [role, setRole] = useState(searchParams.get("role") ?? "ALL");
   const [status, setStatus] = useState(searchParams.get("status") ?? initialStatus);
@@ -436,10 +445,14 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [credential, setCredential] = useState<AuthAccessCredential>();
+  const [adminPassword, setAdminPassword] = useState("");
   const selected = state.users.find((user) => user.id === selectedId);
   const editing = state.users.find((user) => user.id === editingId);
   const deleteBlockers = useMemo(() => new Map(state.users.map((user) => [user.id, getUserDeleteBlockers(state, user.id, viewerId)])), [state, viewerId]);
   const selectedBlockers = selected ? deleteBlockers.get(selected.id) ?? [] : [];
+  const canManageSelected = !selected || selected.role !== "ADMIN" || viewerAdminLevel === "SUPER";
+
+  useEffect(() => setAdminPassword(""), [selectedId]);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -521,7 +534,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                     <TableCell>{roleLabels[user.role]}</TableCell>
                     <TableCell>{promotion?.name ?? "—"}</TableCell>
                     <TableCell><Badge className={accessState(user).className}>{accessState(user).label}</Badge></TableCell>
-                    <TableCell><RowActions deleteDisabled={Boolean(deleteBlockers.get(user.id)?.length)} onView={() => setSelectedId(user.id)} onEdit={() => edit(user.id)} onDelete={() => { setSelectedId(user.id); setDeleteOpen(true); }} /></TableCell>
+                    <TableCell><RowActions editDisabled={user.role === "ADMIN" && viewerAdminLevel !== "SUPER"} deleteDisabled={Boolean(deleteBlockers.get(user.id)?.length) || (user.role === "ADMIN" && viewerAdminLevel !== "SUPER")} onView={() => setSelectedId(user.id)} onEdit={() => edit(user.id)} onDelete={() => { setSelectedId(user.id); setDeleteOpen(true); }} /></TableCell>
                   </TableRow>
                 );
               })}
@@ -562,15 +575,17 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                 <DetailLine label="Promotion">{state.promotions.find((item) => item.id === selected.promotionId)?.name ?? "Non concerné"}</DetailLine>
                 <DetailLine label="Matricule">{selected.matricule ?? "Non concerné"}</DetailLine>
                 {selectedBlockers.length > 0 && <Alert className="mt-4"><AlertTitle>Suppression indisponible</AlertTitle><AlertDescription>{selectedBlockers.join(" ")}</AlertDescription></Alert>}
+                {selected.role === "ADMIN" && viewerAdminLevel !== "SUPER" ? <Alert className="mt-4"><AlertTitle>Compte protégé</AlertTitle><AlertDescription>Seul un super administrateur peut modifier ou révoquer l’accès d’un administrateur.</AlertDescription></Alert> : null}
+                {selected.role === "ADMIN" && viewerAdminLevel === "SUPER" ? <div className="mt-4 space-y-2"><Label htmlFor="selected-admin-password">Votre mot de passe actuel</Label><Input id="selected-admin-password" type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="Confirmation requise pour les actions ci-dessous" /></div> : null}
               </div>
-              <div className="grid gap-2 px-4 pb-2">
-                {!selected.activatedAt ? <Button variant="outline" disabled={isPending(`user:${selected.id}:invite`)} onClick={async () => { const result = await resendInvitation(selected.id); if (result.value) setCredential(result.value); }}><Mail />Générer un nouveau code</Button> : <Button variant="outline" disabled={isPending(`user:${selected.id}:reset-password`)} onClick={async () => { const result = await sendPasswordReset(selected.id); if (result.value) setCredential(result.value); }}><KeyRound />Préparer une réinitialisation</Button>}
-                {selected.id !== viewerId ? <Button variant="outline" disabled={isPending(`user:${selected.id}:revoke`)} onClick={() => revokeUserSessions(selected.id)}><ShieldOff />Révoquer les sessions</Button> : null}
+              <div className={`grid gap-2 px-4 pb-2 ${canManageSelected ? "" : "hidden"}`}>
+                {!selected.activatedAt ? <Button variant="outline" disabled={isPending(`user:${selected.id}:invite`) || (selected.role === "ADMIN" && !adminPassword)} onClick={async () => { const result = await resendInvitation(selected.id, adminPassword); if (result.value) setCredential(result.value); }}><Mail />Générer un nouveau code</Button> : <Button variant="outline" disabled={isPending(`user:${selected.id}:reset-password`) || (selected.role === "ADMIN" && !adminPassword)} onClick={async () => { const result = await sendPasswordReset(selected.id, adminPassword); if (result.value) setCredential(result.value); }}><KeyRound />Préparer une réinitialisation</Button>}
+                {selected.id !== viewerId ? <Button variant="outline" disabled={isPending(`user:${selected.id}:revoke`) || (selected.role === "ADMIN" && !adminPassword)} onClick={() => revokeUserSessions(selected.id, adminPassword)}><ShieldOff />Révoquer les sessions</Button> : null}
               </div>
-              <SheetFooter className="grid grid-cols-1 sm:grid-cols-3">
+              <SheetFooter className={`grid grid-cols-1 sm:grid-cols-3 ${canManageSelected ? "" : "hidden"}`}>
                 <Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button>
-                <Button variant="outline" disabled={isPending(`user:${selected.id}:status`)} onClick={async () => { const result = await setUserStatus(selected.id, selected.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"); if (result.value?.manualCode && result.value.expiresAt && result.value.deliveryStatus) setCredential(result.value as AuthAccessCredential); }}><Power />{selected.status === "ACTIVE" ? "Désactiver" : "Activer"}</Button>
-                <Button variant="destructive" disabled={selectedBlockers.length > 0} onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button>
+                <Button variant="outline" disabled={isPending(`user:${selected.id}:status`) || (selected.role === "ADMIN" && !adminPassword)} onClick={async () => { const result = await setUserStatus(selected.id, selected.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", adminPassword); if (result.value?.manualCode && result.value.expiresAt && result.value.deliveryStatus) setCredential(result.value as AuthAccessCredential); }}><Power />{selected.status === "ACTIVE" ? "Désactiver" : "Activer"}</Button>
+                <Button variant="destructive" disabled={selectedBlockers.length > 0 || (selected.role === "ADMIN" && !adminPassword)} onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button>
               </SheetFooter>
             </>
           )}
@@ -578,7 +593,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
       </Sheet>
       <UserFormDialog key={`${editing?.id ?? "new"}-${formOpen}`} open={formOpen} onOpenChange={setFormOpen} user={editing} onCredential={setCredential} />
       <AccessCredentialDialog key={credential?.manualCode ?? "none"} credential={credential} onClose={() => setCredential(undefined)} />
-      {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.name} ?`} description="Cette action est définitive et sera refusée si des données dépendent de ce compte." onDelete={() => deleteUser(selected.id)} onDeleted={() => setSelectedId(undefined)} />}
+      {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.name} ?`} description="Cette action est définitive et sera refusée si des données dépendent de ce compte." onDelete={() => deleteUser(selected.id, adminPassword)} onDeleted={() => setSelectedId(undefined)} />}
     </div>
   );
 }

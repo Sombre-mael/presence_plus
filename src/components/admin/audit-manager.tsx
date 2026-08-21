@@ -61,6 +61,15 @@ const actionLabels: Record<string, string> = {
   AUTH_EMAIL_ACCEPTED: "E-mail accepté par le service",
   AUTH_EMAIL_FAILED: "Échec de l’envoi e-mail",
   BOOTSTRAP_ADMIN: "Premier administrateur créé",
+  UPDATE_OWN_PROFILE: "Profil personnel mis à jour",
+  UPLOAD_OWN_AVATAR: "Photo de profil mise à jour",
+  REMOVE_OWN_AVATAR: "Photo de profil supprimée",
+  SUBMIT_PROFILE_PHOTO: "Photo soumise pour vérification",
+  APPROVE_PROFILE_PHOTO: "Photo de profil approuvée",
+  REJECT_PROFILE_PHOTO: "Photo de profil refusée",
+  REMOVE_PROFILE_PHOTO: "Photo de profil retirée",
+  PROMOTE_SUPER_ADMIN: "Promotion en super administrateur",
+  DEMOTE_SUPER_ADMIN: "Rétrogradation en administrateur standard",
 };
 
 const entityLabels: Record<string, string> = {
@@ -73,6 +82,7 @@ const entityLabels: Record<string, string> = {
   AuthSession: "Session de connexion",
   AuthToken: "Jeton d’accès",
   AuthThrottle: "Protection anti-abus",
+  ProfilePhotoSubmission: "Vérification de photo",
 };
 
 export function AuditManager() {

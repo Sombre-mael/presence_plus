@@ -183,6 +183,84 @@ test("un étudiant active son compte avec son e-mail et un code", async ({ page 
   }
 });
 
+test("un utilisateur personnalise son profil", async ({ page }) => {
+  const user = await createAuthUserFixture();
+  try {
+    await page.goto("/login");
+    await page.getByLabel("E-mail ou matricule").fill(user.email);
+    await page.getByLabel("Mot de passe", { exact: true }).fill(user.password);
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 60_000 });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/account/profile");
+    await expect(page.getByRole("heading", { name: "Mon profil", exact: true })).toBeVisible();
+    await expect(page.getByText(user.email, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Accès administrateur")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+    const galleryInput = page.locator('input[type="file"]:not([capture])');
+    await galleryInput.setInputFiles({
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR42mNkYGD4z8DAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==", "base64"),
+    });
+    await expect(page.getByRole("heading", { name: "Recadrer la photo" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.getByRole("button", { name: "Annuler" }).click();
+
+    await page.getByLabel("Prénom d’usage").fill("Profil Test");
+    await page.getByLabel("Téléphone").fill("+243 999 000 000");
+    await page.locator('label:has(input[name="avatarColor"][value="BLUE"])').click();
+    await expect(page.getByRole("radio", { name: "Bleu" })).toBeChecked();
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.getByText("Votre profil a été personnalisé.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Profil Test" })).toBeVisible();
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.reload();
+    await expect(page.getByLabel("Prénom d’usage")).toHaveValue("Profil Test");
+    await expect(page.getByLabel("Téléphone")).toHaveValue("+243 999 000 000");
+    await expect(page.getByRole("radio", { name: "Bleu" })).toBeChecked();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  } finally {
+    await cleanupAuthUserFixture(user.id);
+  }
+});
+
+test("la section système est réservée au super administrateur", async ({ browser }) => {
+  const standardAdmin = await createAuthUserFixture({ adminLevel: "STANDARD" });
+  const superAdmin = await createAuthUserFixture({ adminLevel: "SUPER" });
+  const standardContext = await browser.newContext();
+  const superContext = await browser.newContext();
+  try {
+    const standardPage = await standardContext.newPage();
+    await standardPage.goto("/login");
+    await standardPage.getByLabel("E-mail ou matricule").fill(standardAdmin.email);
+    await standardPage.getByLabel("Mot de passe", { exact: true }).fill(standardAdmin.password);
+    await standardPage.getByRole("button", { name: "Se connecter" }).click();
+    await expect(standardPage).not.toHaveURL(/\/login/, { timeout: 60_000 });
+    await standardPage.goto("/admin/system");
+    await expect(standardPage.locator("body")).toContainText("404");
+    await expect(standardPage.getByRole("heading", { name: "Administration système" })).toHaveCount(0);
+
+    const superPage = await superContext.newPage();
+    await superPage.goto("/login");
+    await superPage.getByLabel("E-mail ou matricule").fill(superAdmin.email);
+    await superPage.getByLabel("Mot de passe", { exact: true }).fill(superAdmin.password);
+    await superPage.getByRole("button", { name: "Se connecter" }).click();
+    await expect(superPage).not.toHaveURL(/\/login/, { timeout: 60_000 });
+    await superPage.goto("/admin/system");
+    await expect(superPage.getByRole("heading", { name: "Administration système" })).toBeVisible();
+    await expect(superPage.getByText("Super administrateur", { exact: true }).first()).toBeVisible();
+  } finally {
+    await standardContext.close();
+    await superContext.close();
+    await cleanupAuthUserFixture(standardAdmin.id);
+    await cleanupAuthUserFixture(superAdmin.id);
+  }
+});
+
 test("un utilisateur voit ses appareils et révoque une autre session", async ({ browser }) => {
   const user = await createAuthUserFixture();
   const firstContext = await browser.newContext();

@@ -1,17 +1,26 @@
 export type Role = "ADMIN" | "TEACHER" | "STUDENT";
+export type AdminLevel = "STANDARD" | "SUPER";
 
 export type UserStatus = "ACTIVE" | "INACTIVE";
 export type SessionStatus = "SCHEDULED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
 export type AttendanceStatus = "PRESENT" | "LATE" | "ABSENT" | "EXCUSED";
 export type AttendanceSource = "QR" | "STUDENT_CODE" | "MANUAL";
+export type AvatarColor = "EMERALD" | "BLUE" | "AMBER" | "ROSE" | "SLATE";
 
 export interface UserSummary {
   id: string;
   name: string;
+  preferredName?: string;
   email: string;
+  avatarUrl?: string;
+  avatarColor?: AvatarColor;
   role: Role;
+  adminLevel?: AdminLevel;
   status: UserStatus;
   promotion?: string;
+  profilePhotoStatus?: "MISSING" | "PENDING" | "APPROVED" | "REJECTED";
+  profilePhotoEnforcementAt?: string;
+  profilePhotoRequired?: boolean;
 }
 
 export interface Promotion {

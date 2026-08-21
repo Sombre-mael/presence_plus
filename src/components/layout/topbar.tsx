@@ -4,14 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTransition } from "react";
-import { BellRing, ChevronDown, KeyRound, LogOut, RotateCcw } from "lucide-react";
+import { BellRing, ChevronDown, KeyRound, LogOut, RotateCcw, UserRound } from "lucide-react";
 import type { Role, UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
 import { Button } from "@/components/ui/button";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { removePushSubscriptionAction } from "@/actions/notification.actions";
 import { getBrowserPushSubscription } from "@/lib/web-push.client";
+import { profileDisplayName } from "@/lib/profile-presentation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,11 @@ const labels: Record<string, string> = {
   "check-in": "Pointage",
   history: "Historique",
   schedule: "Mon planning",
+  profile: "Mon profil",
+  security: "Sécurité du compte",
+  notifications: "Notifications",
+  "photo-reviews": "Vérification des photos",
+  system: "Administration système",
 };
 
 function getBreadcrumb(pathname: string) {
@@ -64,11 +70,7 @@ export function Topbar({
   const pathname = usePathname();
   const [leaving, startLeaving] = useTransition();
   const breadcrumb = getBreadcrumb(pathname);
-  const initials = user.name
-    .split(" ")
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join("");
+  const displayName = profileDisplayName(user.name, user.preferredName);
 
   async function revokeCurrentDevicePush() {
     const subscription = await getBrowserPushSubscription();
@@ -99,17 +101,21 @@ export function Topbar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-10 gap-2 px-2">
-              <Avatar className="size-7">
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
-              <span className="hidden max-w-32 truncate sm:inline">{user.name}</span>
+              <ProfileAvatar
+                name={displayName}
+                avatarUrl={user.avatarUrl}
+                avatarColor={user.avatarColor}
+                className="size-7"
+              />
+              <span className="hidden max-w-32 truncate sm:inline">{displayName}</span>
               <ChevronDown className="size-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <span className="block truncate">{user.name}</span>
+              <span className="block truncate">{displayName}</span>
               <span className="block truncate text-xs font-normal text-muted-foreground">{user.email}</span>
+              {user.role === "ADMIN" ? <span className="mt-1 block text-xs font-medium text-primary">{user.adminLevel === "SUPER" ? "Super administrateur" : "Administrateur"}</span> : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {onReloadData && (
@@ -118,6 +124,9 @@ export function Topbar({
                 Actualiser les données
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem asChild>
+              <Link href="/account/profile"><UserRound />Mon profil</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/account/security"><KeyRound />Sécurité du compte</Link>
             </DropdownMenuItem>

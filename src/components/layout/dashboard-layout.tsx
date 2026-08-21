@@ -17,6 +17,7 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { RouteTransition } from "./route-transition";
 import { PushPermissionPrompt } from "@/components/notifications/push-permission-prompt";
+import { ProfilePhotoNotice } from "@/components/account/profile-photo-notice";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -47,7 +48,7 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
           collapsed ? "w-20" : "w-64"
         }`}
       >
-        <Sidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} syncStatus={syncStatus} />
+        <Sidebar role={role} adminLevel={user.adminLevel} collapsed={collapsed} onToggle={toggleSidebar} syncStatus={syncStatus} />
       </aside>
 
       <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
@@ -63,13 +64,14 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
                 <SheetTitle>Navigation</SheetTitle>
                 <SheetDescription>Menu principal de Presence Plus</SheetDescription>
               </SheetHeader>
-              <Sidebar role={role} mobile syncStatus={syncStatus} />
+              <Sidebar role={role} adminLevel={user.adminLevel} mobile syncStatus={syncStatus} />
             </SheetContent>
           </Sheet>
           <Topbar role={role} user={user} anomalies={anomalies} onReloadData={onReloadData} />
         </div>
 
         <main className="mx-auto w-full max-w-[1440px] p-4 sm:p-6 lg:p-8">
+          <ProfilePhotoNotice user={user} />
           <RouteTransition>{children}</RouteTransition>
         </main>
       </div>

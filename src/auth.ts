@@ -67,6 +67,7 @@ export const authOptions: NextAuthOptions = {
             email: true,
             passwordHash: true,
             role: true,
+            adminLevel: true,
             status: true,
             activatedAt: true,
             mustChangePassword: true,
@@ -102,6 +103,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
+          adminLevel: user.adminLevel ?? undefined,
           sessionVersion: user.sessionVersion,
           mustChangePassword: user.mustChangePassword,
           authSessionId: authSession.id,
@@ -114,6 +116,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.userId = user.id;
         token.role = user.role;
+        token.adminLevel = user.adminLevel;
         token.sessionVersion = user.sessionVersion;
         token.mustChangePassword = user.mustChangePassword;
         token.authSessionId = user.authSessionId;
@@ -125,6 +128,7 @@ export const authOptions: NextAuthOptions = {
         ...session.user,
         id: token.userId,
         role: token.role,
+        adminLevel: token.adminLevel,
         sessionVersion: token.sessionVersion,
         mustChangePassword: token.mustChangePassword,
         authSessionId: token.authSessionId,

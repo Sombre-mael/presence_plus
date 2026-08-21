@@ -61,6 +61,8 @@ import { isWithinSessionStartWindow } from "@/lib/session-lifecycle";
 import { SERIALIZABLE_TRANSACTION_OPTIONS } from "@/lib/transaction-options";
 import type { AuthAccessCredential } from "@/types/auth";
 import { createUserNotifications, deliverNotificationPush } from "@/lib/notifications.server";
+import { studentProfilePhotoRequired } from "@/lib/profile-photo.server";
+import { isSuperAdmin, verifyViewerPassword } from "@/lib/admin-access.server";
 
 export type AcademicActionResult<T = undefined> = MutationResult & {
   patch?: AcademicPatch;
@@ -105,9 +107,13 @@ async function userStatusBlocker(
 ) {
   if (status === "ACTIVE") return null;
   if (id === viewerId) return "Vous ne pouvez pas désactiver le profil administrateur utilisé.";
-  const user = await database.user.findUnique({ where: { id }, select: { role: true, status: true } });
+  const user = await database.user.findUnique({ where: { id }, select: { role: true, status: true, adminLevel: true } });
   if (!user) return "Utilisateur introuvable.";
   if (user.role === "ADMIN" && user.status === "ACTIVE") {
+    if (user.adminLevel === "SUPER") {
+      const otherSuperAdmins = await database.user.count({ where: { id: { not: id }, role: "ADMIN", adminLevel: "SUPER", status: "ACTIVE" } });
+      if (!otherSuperAdmins) return "Le dernier super administrateur actif ne peut pas être désactivé.";
+    }
     const otherAdmins = await database.user.count({ where: { id: { not: id }, role: "ADMIN", status: "ACTIVE" } });
     if (!otherAdmins) return "Le dernier administrateur actif ne peut pas être désactivé.";
   }
@@ -123,8 +129,12 @@ async function userStatusBlocker(
 }
 
 async function lastAdminRoleBlocker(database: Prisma.TransactionClient, id: string, nextRole: AdminUserInput["role"]) {
-  const user = await database.user.findUnique({ where: { id }, select: { role: true, status: true } });
+  const user = await database.user.findUnique({ where: { id }, select: { role: true, status: true, adminLevel: true } });
   if (!user || user.role !== "ADMIN" || user.status !== "ACTIVE" || nextRole === "ADMIN") return null;
+  if (user.adminLevel === "SUPER") {
+    const otherSuperAdmins = await database.user.count({ where: { id: { not: id }, role: "ADMIN", adminLevel: "SUPER", status: "ACTIVE" } });
+    if (!otherSuperAdmins) return "Le rôle du dernier super administrateur actif ne peut pas être modifié.";
+  }
   const otherAdmins = await database.user.count({ where: { id: { not: id }, role: "ADMIN", status: "ACTIVE" } });
   return otherAdmins ? null : "Le rôle du dernier administrateur actif ne peut pas être modifié.";
 }
@@ -257,6 +267,12 @@ export async function loadAdminAuditLogsAction(input: AdminAuditQuery): Promise<
 export async function createUserAction(input: AdminUserInput): Promise<AcademicActionResult<UserAccessMutationValue>> {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
+  if (input.role === "ADMIN") {
+    if (!isSuperAdmin(viewer)) return failure({ ok: false, message: "Seul un super administrateur peut créer un compte administrateur." });
+    if (!await verifyViewerPassword(viewer.id, input.currentPassword)) {
+      return failure({ ok: false, message: "Le mot de passe actuel est incorrect.", fieldErrors: { currentPassword: "Vérifiez votre mot de passe." } });
+    }
+  }
   const state = await getAcademicSnapshot(viewer);
   const validation = validateUser(state, input);
   if (!validation.ok) return failure(validation);
@@ -273,6 +289,7 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
           name: input.name.trim(),
           email,
           role: input.role,
+          adminLevel: input.role === "ADMIN" ? "STANDARD" : null,
           status: input.status,
           activatedAt: null,
           mustChangePassword: true,
@@ -315,6 +332,12 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
   const current = state.users.find((user) => user.id === id);
   const email = input.email.trim().toLowerCase();
   if (!current) return failure({ ok: false, message: "Utilisateur introuvable." });
+  if (current.role === "ADMIN" || input.role === "ADMIN") {
+    if (!isSuperAdmin(viewer)) return failure({ ok: false, message: "Seul un super administrateur peut modifier un compte administrateur." });
+    if (!await verifyViewerPassword(viewer.id, input.currentPassword)) {
+      return failure({ ok: false, message: "Le mot de passe actuel est incorrect.", fieldErrors: { currentPassword: "Vérifiez votre mot de passe." } });
+    }
+  }
   if (current.role !== input.role) {
     const hasDependencies = state.courses.some((course) => course.teacherId === id) ||
       state.sessions.some((session) => session.teacherId === id) ||
@@ -326,7 +349,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
   let renewedInvitation: Awaited<ReturnType<typeof issueAuthToken>> | null = null;
   try {
     renewedInvitation = await prisma.$transaction(async (tx) => {
-      const persisted = await tx.user.findUnique({ where: { id }, select: { role: true, status: true, email: true } });
+      const persisted = await tx.user.findUnique({ where: { id }, select: { role: true, status: true, email: true, adminLevel: true } });
       if (!persisted) throw Object.assign(new Error("Utilisateur introuvable."), { code: "BUSINESS_RULE" });
       if (persisted.role !== input.role) {
         const adminBlocker = await lastAdminRoleBlocker(tx, id, input.role);
@@ -354,6 +377,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
           name: input.name.trim(),
           email,
           role: input.role,
+          adminLevel: input.role === "ADMIN" ? persisted.adminLevel ?? "STANDARD" : null,
           status: input.status,
           ...(emailChanged ? { activatedAt: null, mustChangePassword: true } : {}),
           ...(securityChanged ? { sessionVersion: { increment: 1 } } : {}),
@@ -405,9 +429,14 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
   return success(viewer, validation.message, ["users", "auditLogs"]);
 }
 
-export async function deleteUserAction(id: string) {
+export async function deleteUserAction(id: string, currentPassword?: string) {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
+  const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  if (target?.role === "ADMIN") {
+    if (!isSuperAdmin(viewer)) return failure({ ok: false, message: "Seul un super administrateur peut supprimer un compte administrateur." });
+    if (!await verifyViewerPassword(viewer.id, currentPassword)) return failure({ ok: false, message: "Le mot de passe actuel est incorrect." });
+  }
   const state = await getAcademicSnapshot(viewer);
   const blockers = getUserDeleteBlockers(state, id, viewer.id);
   if (blockers.length) return failure({ ok: false, message: blockers.join(" ") });
@@ -425,10 +454,14 @@ export async function deleteUserAction(id: string) {
   return success(viewer, "Utilisateur supprimé.", ["users", "auditLogs"]);
 }
 
-export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTIVE"): Promise<AcademicActionResult<UserAccessMutationValue>> {
+export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTIVE", currentPassword?: string): Promise<AcademicActionResult<UserAccessMutationValue>> {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
-  const current = await prisma.user.findUnique({ where: { id }, select: { activatedAt: true } });
+  const current = await prisma.user.findUnique({ where: { id }, select: { activatedAt: true, role: true } });
+  if (current?.role === "ADMIN") {
+    if (!isSuperAdmin(viewer)) return failure({ ok: false, message: "Seul un super administrateur peut modifier l’état d’un compte administrateur." });
+    if (!await verifyViewerPassword(viewer.id, currentPassword)) return failure({ ok: false, message: "Le mot de passe actuel est incorrect." });
+  }
   try {
     await prisma.$transaction(async (tx) => {
       const blocker = await userStatusBlocker(tx, id, status, viewer.id);
@@ -888,6 +921,9 @@ export async function validateStudentCodeAction(raw: string, source: Extract<Att
   const student = await prisma.user.findFirst({ where: { id: viewer.id, role: "STUDENT", status: "ACTIVE" } });
   if (!student?.promotionId) return { ok: false, code: "STUDENT_INACTIVE", message: "Votre compte étudiant n’est pas actif." };
   const now = new Date();
+  if (await studentProfilePhotoRequired(viewer.id, now)) {
+    return { ok: false, code: "PHOTO_REQUIRED", message: "Une photo de profil approuvée est nécessaire pour pointer votre présence." };
+  }
   const sessions = await prisma.session.findMany({
     where: { status: "ACTIVE", promotionId: student.promotionId, scheduledEndAt: { gt: now } },
     select: { id: true },
@@ -919,6 +955,9 @@ export async function confirmStudentCheckInAction(input: StudentCheckInInput): P
   const viewer = await viewerFor("STUDENT");
   if (!viewer) return { ok: false, code: "STUDENT_INACTIVE", message: "Sélectionnez le profil étudiant." };
   const confirmedAt = new Date();
+  if (await studentProfilePhotoRequired(viewer.id, confirmedAt)) {
+    return { ok: false, code: "PHOTO_REQUIRED", message: "Une photo de profil approuvée est nécessaire pour confirmer votre présence." };
+  }
   if (
     input.studentId !== viewer.id ||
     (input.source !== "QR" && input.source !== "STUDENT_CODE") ||

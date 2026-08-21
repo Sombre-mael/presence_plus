@@ -1,4 +1,5 @@
 import type {
+  AdminLevel,
   AttendanceRecord,
   Role,
   SessionSummary,
@@ -13,6 +14,7 @@ export interface AdminUser {
   name: string;
   email: string;
   role: Role;
+  adminLevel?: AdminLevel;
   status: UserStatus;
   promotionId?: string;
   matricule?: string;
@@ -63,6 +65,21 @@ export interface AdminAuditLog {
   createdAt: string;
 }
 
+export interface SystemAdminSummary {
+  id: string;
+  name: string;
+  email: string;
+  adminLevel: AdminLevel;
+  status: UserStatus;
+  activeSessionCount: number;
+  lastLoginAt?: string;
+}
+
+export interface SystemAdministrationData {
+  admins: SystemAdminSummary[];
+  profilePhotoEnforcementAt: string;
+}
+
 export interface AcademicDataState {
   version: 3;
   users: AdminUser[];
@@ -76,7 +93,9 @@ export interface AcademicDataState {
 
 export type AdminDataState = AcademicDataState;
 
-export type AdminUserInput = Pick<AdminUser, "name" | "email" | "role" | "status" | "promotionId" | "matricule">;
+export type AdminUserInput = Pick<AdminUser, "name" | "email" | "role" | "status" | "promotionId" | "matricule"> & {
+  currentPassword?: string;
+};
 export type UserAccessMutationValue = Partial<AuthAccessCredential> & { id?: string };
 export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt" | "updatedAt">;
 export type AdminCourseInput = Omit<AdminCourse, "id" | "createdAt" | "updatedAt">;

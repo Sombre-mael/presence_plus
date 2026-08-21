@@ -2,6 +2,7 @@
 
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdmin, verifyViewerPassword } from "@/lib/admin-access.server";
 import { getAuthenticatedViewer, getViewerForRole } from "@/lib/authenticated-viewer";
 import {
   clearTokenVerificationThrottle,
@@ -287,11 +288,15 @@ export async function revokeOwnSessionsAction(currentPassword: string): Promise<
   return { ok: true, message: revoked ? `${revoked} autre session révoquée.` : "Aucune autre session active." };
 }
 
-async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWORD_RESET"): Promise<AuthActionResult<AuthAccessCredential>> {
+async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWORD_RESET", currentPassword?: string): Promise<AuthActionResult<AuthAccessCredential>> {
   const viewer = await getViewerForRole("ADMIN");
   if (!viewer) return { ok: false, message: "Accès administrateur requis." };
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, matricule: true, status: true, activatedAt: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, matricule: true, status: true, activatedAt: true, role: true } });
   if (!user || user.status !== "ACTIVE") return { ok: false, message: "Ce compte est introuvable ou inactif." };
+  if (user.role === "ADMIN") {
+    if (!isSuperAdmin(viewer)) return { ok: false, message: "Seul un super administrateur peut gérer l’accès d’un administrateur." };
+    if (!await verifyViewerPassword(viewer.id, currentPassword)) return { ok: false, message: "Le mot de passe actuel est incorrect.", fieldErrors: { currentPassword: "Vérifiez votre mot de passe." } };
+  }
   if (type === "INVITATION" && user.activatedAt) return { ok: false, message: "Ce compte est déjà activé." };
   const issued = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
     const token = await issueAuthToken(user.id, type, tx);
@@ -309,18 +314,23 @@ async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWO
   return { ok: true, message, value: accessCredentialValue(issued, delivery.status, user, type) };
 }
 
-export async function resendInvitationAction(userId: string) {
-  return issueAdminCredential(userId, "INVITATION");
+export async function resendInvitationAction(userId: string, currentPassword?: string) {
+  return issueAdminCredential(userId, "INVITATION", currentPassword);
 }
 
-export async function sendPasswordResetAction(userId: string) {
-  return issueAdminCredential(userId, "PASSWORD_RESET");
+export async function sendPasswordResetAction(userId: string, currentPassword?: string) {
+  return issueAdminCredential(userId, "PASSWORD_RESET", currentPassword);
 }
 
-export async function revokeUserSessionsAction(userId: string): Promise<AuthActionResult> {
+export async function revokeUserSessionsAction(userId: string, currentPassword?: string): Promise<AuthActionResult> {
   const viewer = await getViewerForRole("ADMIN");
   if (!viewer) return { ok: false, message: "Accès administrateur requis." };
   if (viewer.id === userId) return { ok: false, message: "Utilisez la sécurité de votre compte pour révoquer vos propres sessions." };
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (target?.role === "ADMIN") {
+    if (!isSuperAdmin(viewer)) return { ok: false, message: "Seul un super administrateur peut révoquer les sessions d’un administrateur." };
+    if (!await verifyViewerPassword(viewer.id, currentPassword)) return { ok: false, message: "Le mot de passe actuel est incorrect.", fieldErrors: { currentPassword: "Vérifiez votre mot de passe." } };
+  }
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
     const updated = await tx.user.updateMany({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } });

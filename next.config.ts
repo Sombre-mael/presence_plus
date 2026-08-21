@@ -23,6 +23,7 @@ if (process.env.VERCEL_ENV === "production") {
     "AUTH_SECRET",
     "NEXTAUTH_URL",
     "AUTH_EMAIL_MODE",
+    "BLOB_READ_WRITE_TOKEN",
   ];
   const missing = requiredProductionVariables.filter((name) => !process.env[name]?.trim());
   if (missing.length) throw new Error(`Configuration de production incomplète : ${missing.join(", ")}`);
