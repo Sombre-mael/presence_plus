@@ -16,6 +16,8 @@ export interface AuthEmailResult {
   message: string;
   status: AuthDeliveryStatus;
   providerMessageId?: string;
+  providerHttpStatus?: number;
+  providerErrorCode?: string;
 }
 
 interface TransactionalAuthEmail {
@@ -75,7 +77,14 @@ async function sendWithBrevo(message: TransactionalAuthEmail): Promise<AuthEmail
     signal: AbortSignal.timeout(15_000),
   });
 
-  if (!response.ok) return failedEmail();
+  if (!response.ok) {
+    const error = await response.json().catch(() => undefined) as { code?: unknown } | undefined;
+    return {
+      ...failedEmail(),
+      providerHttpStatus: response.status,
+      providerErrorCode: typeof error?.code === "string" ? error.code.slice(0, 80) : undefined,
+    };
+  }
   const data = await response.json().catch(() => undefined) as { messageId?: unknown } | undefined;
   const providerMessageId = typeof data?.messageId === "string" ? data.messageId : undefined;
   return {

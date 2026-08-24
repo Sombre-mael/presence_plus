@@ -156,7 +156,7 @@ async function createAndSendInvitation(userId: string, actorId: string) {
     await audit(actorId, "SEND_INVITATION", "User", userId, undefined, tx);
     return { user, token };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  const delivery = await deliverAuthEmail(issued.token.id, issued.user, "INVITATION", issued.token.token, actorId);
+  const delivery = await deliverAuthEmail(issued.token.id, issued.user, "INVITATION", issued.token.token, issued.token.manualCode, actorId);
   return {
     kind: "INVITATION",
     identifier: issued.user.email,
@@ -308,7 +308,7 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
     return prismaFailure(error, "L’utilisateur n’a pas pu être créé.");
   }
   if (!invitation) return success(viewer, `${validation.message} Le compte inactif n’a pas reçu d’invitation.`, ["users", "auditLogs"], { id });
-  const delivery = await deliverAuthEmail(invitation.id, { email, name: input.name.trim() }, "INVITATION", invitation.token, viewer.id);
+  const delivery = await deliverAuthEmail(invitation.id, { email, name: input.name.trim() }, "INVITATION", invitation.token, invitation.manualCode, viewer.id);
   const message = delivery.status === "FAILED"
       ? `${validation.message} L’accès est disponible, mais l’e-mail n’a pas été accepté.`
       : `${validation.message} ${delivery.status === "SIMULATED" ? "Le lien et le code sont prêts à être remis directement à l’utilisateur." : "L’envoi a été accepté par le service d’e-mail."}`;
@@ -408,7 +408,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
     return prismaFailure(error, "L’utilisateur n’a pas pu être modifié.");
   }
   if (renewedInvitation) {
-    const delivery = await deliverAuthEmail(renewedInvitation.id, { email, name: input.name.trim() }, "INVITATION", renewedInvitation.token, viewer.id);
+    const delivery = await deliverAuthEmail(renewedInvitation.id, { email, name: input.name.trim() }, "INVITATION", renewedInvitation.token, renewedInvitation.manualCode, viewer.id);
     const message = delivery.status === "FAILED"
       ? `${validation.message} La nouvelle adresse doit être activée, mais l’e-mail n’a pas été accepté.`
       : `${validation.message} Une nouvelle invitation a été envoyée pour vérifier l’adresse e-mail.`;

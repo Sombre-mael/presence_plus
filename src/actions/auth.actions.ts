@@ -89,7 +89,7 @@ export async function requestPasswordResetAction(identifierValue: string): Promi
     });
     return token;
   }, SERIALIZABLE_TRANSACTION_OPTIONS));
-  await deliverAuthEmail(issued.id, user, "PASSWORD_RESET", issued.token, null).catch(() => undefined);
+  await deliverAuthEmail(issued.id, user, "PASSWORD_RESET", issued.token, issued.manualCode, null).catch(() => undefined);
   return { ok: true, message: GENERIC_RECOVERY_MESSAGE };
 }
 
@@ -305,7 +305,7 @@ async function issueAdminCredential(userId: string, type: "INVITATION" | "PASSWO
     });
     return token;
   }, SERIALIZABLE_TRANSACTION_OPTIONS));
-  const delivery = await deliverAuthEmail(issued.id, user, type, issued.token, viewer.id);
+  const delivery = await deliverAuthEmail(issued.id, user, type, issued.token, issued.manualCode, viewer.id);
   const message = delivery.status === "FAILED"
       ? "Accès généré, mais l’e-mail n’a pas été accepté."
       : delivery.status === "SIMULATED"

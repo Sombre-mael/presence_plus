@@ -51,8 +51,16 @@ describe("auth email transport", () => {
   });
 
   it("retourne un échec métier lorsque Brevo refuse le message", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Unauthorized", { status: 401 })));
-    await expect(sendTransactionalAuthEmail(message)).resolves.toMatchObject({ sent: false, status: "FAILED" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "unauthorized", message: "Key rejected" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    })));
+    await expect(sendTransactionalAuthEmail(message)).resolves.toMatchObject({
+      sent: false,
+      status: "FAILED",
+      providerHttpStatus: 401,
+      providerErrorCode: "unauthorized",
+    });
   });
 
   it("conserve la remise manuelle sans contacter Brevo", async () => {
