@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { AttendanceRecord, SessionSummary } from "@/types";
+import type { AttendanceRecord, AttendanceStatus, SessionSummary } from "@/types";
+import type { CorrectionResolutionInput } from "@/types/student";
 import type {
   AcademicDataState,
   AdminAnomaly,
@@ -143,6 +144,34 @@ export function deriveAttendanceStatus(
   return check > start + thresholdMinutes ? "LATE" as const : "PRESENT" as const;
 }
 
+export function attendanceStatusForSession(
+  session: Pick<SessionSummary, "status" | "startTime" | "lateThresholdMinutes">,
+  status: AttendanceStatus,
+  checkedInAt?: string,
+): AttendanceStatus {
+  // After closure, the teacher's audited decision overrides automatic lateness.
+  return session.status === "ACTIVE" && checkedInAt && ["PRESENT", "LATE"].includes(status)
+    ? deriveAttendanceStatus(session.startTime, checkedInAt, session.lateThresholdMinutes ?? 10)
+    : status;
+}
+
+export function validateCorrectionResolution(input: CorrectionResolutionInput): MutationResult {
+  const parsed = z.object({
+    requestId: z.string().min(1),
+    decision: z.enum(["APPROVE", "REJECT"]),
+    reason: z.string().trim().min(5, "Expliquez votre décision en au moins 5 caractères."),
+    resolvedStatus: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]).optional(),
+    checkedInAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure invalide.").or(z.literal("")).optional(),
+  }).superRefine((value, ctx) => {
+    if (value.decision === "APPROVE" && !value.resolvedStatus) {
+      ctx.addIssue({ code: "custom", path: ["resolvedStatus"], message: "Choisissez le statut final." });
+    }
+  }).safeParse(input);
+  return parsed.success ? { ok: true, message: "Décision valide." } : {
+    ok: false, message: "Vérifiez les informations de la décision.", fieldErrors: fieldErrors(parsed.error),
+  };
+}
+
 export function validateAttendanceInput(
   state: AcademicDataState,
   sessionId: string,
@@ -171,6 +200,14 @@ export function validateAttendanceInput(
       message: "Le motif de correction est obligatoire.",
       fieldErrors: { correctionReason: "Expliquez cette correction." },
     };
+  }
+  if (!["PRESENT", "LATE", "ABSENT", "EXCUSED"].includes(input.status)) {
+    return { ok: false, message: "Statut de présence invalide." };
+  }
+  if (["PRESENT", "LATE"].includes(input.status) &&
+    ((session.status === "ACTIVE" && !input.checkedInAt) ||
+      (input.checkedInAt && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.checkedInAt)))) {
+    return { ok: false, message: "Indiquez une heure de pointage valide.", fieldErrors: { checkedInAt: "Heure invalide." } };
   }
   return { ok: true, message: correction ? "Présence corrigée." : "Présence enregistrée." };
 }

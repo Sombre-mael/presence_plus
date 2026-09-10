@@ -38,6 +38,7 @@ const labels: Record<string, string> = {
   qr: "QR code",
   attendances: "Présences",
   corrections: "Demandes de correction",
+  assiduity: "Assiduité des étudiants",
   "check-in": "Pointage",
   history: "Historique",
   schedule: "Mon planning",

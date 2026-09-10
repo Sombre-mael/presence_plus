@@ -57,6 +57,7 @@ const navigation: Record<Role, NavItem[]> = {
   TEACHER: [
     { href: "/teacher/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { href: "/teacher/sessions", label: "Mes sessions", icon: CalendarCheck },
+    { href: "/teacher/assiduity", label: "Assiduité des étudiants", icon: BarChart3 },
     { href: "/teacher/corrections", label: "Demandes de correction", icon: MessageSquareText },
   ],
   STUDENT: [

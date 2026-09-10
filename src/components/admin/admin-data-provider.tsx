@@ -175,13 +175,16 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
 
   const hasActiveSession = state.sessions.some((session) => session.status === "ACTIVE");
   useEffect(() => {
-    if (!hasActiveSession) return;
+    let refreshing = false;
+    let cancelled = false;
     const interval = window.setInterval(async () => {
-      if (document.visibilityState !== "visible" || pendingKeys.length > 0) return;
+      if (refreshing || document.visibilityState !== "visible" || pendingKeys.length > 0) return;
+      refreshing = true;
       const sequence = ++reloadSequence.current;
       const revision = mutationRevision.current;
       try {
         const result = await loadLiveAcademicDataAction();
+        if (cancelled) return;
         if (!result.viewerId || !result.role || !result.patch) {
           window.location.replace("/login");
           return;
@@ -203,10 +206,12 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
         setSyncStatus("synced");
         setLastSyncedAt(result.syncedAt);
       } catch {
-        if (sequence === reloadSequence.current) setSyncStatus("error");
+        if (!cancelled && sequence === reloadSequence.current) setSyncStatus("error");
+      } finally {
+        refreshing = false;
       }
-    }, 15_000);
-    return () => window.clearInterval(interval);
+    }, hasActiveSession ? 15_000 : 30_000);
+    return () => { cancelled = true; window.clearInterval(interval); };
   }, [hasActiveSession, pendingKeys.length, viewerId]);
 
   useEffect(() => {
@@ -223,10 +228,11 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
       const result = await request;
       if (result.ok) mutationRevision.current += 1;
       if (result.ok && result.patch) setState((current) => ({ ...current, ...result.patch }));
-      if (result.ok) {
+      if (result.ok && result.patch) {
         setSyncStatus("synced");
         setLastSyncedAt(new Date().toISOString());
       }
+      if (result.ok && !result.patch) await reload();
       if (result.ok) notify(result.message);
       else notifyError(result.message);
       return result;
@@ -239,7 +245,7 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
       setPendingCount((count) => Math.max(0, count - 1));
       setPendingKeys((current) => current.filter((item, index) => item !== key || index !== current.lastIndexOf(key)));
     }
-  }, [notify, notifyError]);
+  }, [notify, notifyError, reload]);
 
   const createUser = useCallback((input: AdminUserInput) => run(createUserAction(input), "user:create"), [run]);
   const updateUser = useCallback((id: string, input: AdminUserInput) => run(updateUserAction(id, input), `user:${id}:update`), [run]);

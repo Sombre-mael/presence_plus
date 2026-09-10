@@ -6,7 +6,7 @@ import { Download, MessageSquareText, Pencil, Plus, Search, UserCheck } from "lu
 import type { AttendanceStatus } from "@/types";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { CorrectionDecisionDialog } from "@/components/teacher/correction-decision-dialog";
-import { deriveAttendanceStatus, getSessionRoster } from "@/lib/academic-domain";
+import { attendanceStatusForSession, getSessionRoster } from "@/lib/academic-domain";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
@@ -121,9 +121,7 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
       setError("Sélectionnez un étudiant.");
       return;
     }
-    const automaticStatus = ["PRESENT", "LATE"].includes(status)
-      ? deriveAttendanceStatus(session.startTime, time, session.lateThresholdMinutes ?? 10)
-      : status;
+    const automaticStatus = attendanceStatusForSession(session, status, time);
     const result = await saveAttendance(sessionId, {
       studentId: selectedId,
       status: automaticStatus,
@@ -141,10 +139,14 @@ function AttendanceDialog({ sessionId, studentId, trigger }: { sessionId: string
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => {
+      if (isPending(`attendance:${sessionId}:${selectedId}`)) return;
+      if (next) selectStudent(studentId ?? selectedId);
+      setOpen(next);
+    }}>
       <DialogTrigger asChild>{trigger ?? <Button><Plus /> Saisie manuelle</Button>}</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>{session.status === "COMPLETED" || selectedAttendance ? "Corriger une présence" : "Enregistrer une présence"}</DialogTitle><DialogDescription>Les arrivées après {session.lateThresholdMinutes ?? 10} minutes sont automatiquement classées en retard.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{session.status === "COMPLETED" || selectedAttendance ? "Corriger une présence" : "Enregistrer une présence"}</DialogTitle><DialogDescription>{session.status === "COMPLETED" ? "Le statut choisi sera appliqué avec votre motif de correction." : `Les arrivées après ${session.lateThresholdMinutes ?? 10} minutes sont automatiquement classées en retard.`}</DialogDescription></DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2"><Label>Étudiant</Label><Select value={selectedId} onValueChange={selectStudent} disabled={Boolean(studentId)}><SelectTrigger className="w-full" aria-label="Étudiant"><SelectValue placeholder="Sélectionner un étudiant" /></SelectTrigger><SelectContent>{roster.map(({ student }) => <SelectItem key={student.id} value={student.id}>{student.name} · {student.matricule}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Statut</Label><Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}><SelectTrigger className="w-full" aria-label="Statut"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PRESENT">Présent</SelectItem><SelectItem value="LATE">En retard</SelectItem><SelectItem value="ABSENT">Absent</SelectItem><SelectItem value="EXCUSED">Absence justifiée</SelectItem></SelectContent></Select></div>

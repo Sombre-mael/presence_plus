@@ -120,7 +120,7 @@ export function CorrectionsManager() {
                     <Button asChild variant="outline"><Link href={`/teacher/sessions/${request.sessionId}/attendances?request=${request.id}`}><CalendarClock /> Voir la séance</Link></Button>
                   </div>
                 </div>
-                {request.status !== "PENDING" && request.decisionReason ? <div className="border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground">Décision de {request.resolvedByName ?? "l’enseignant"} : {request.decisionReason}</div> : null}
+                {request.status !== "PENDING" && request.decisionReason ? <div className="space-y-2 border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground"><p>Décision de {request.resolvedByName ?? "l’enseignant"} : {request.decisionReason}</p>{request.status === "APPROVED" && request.resolvedStatus ? <div className="flex items-center gap-2">Statut appliqué lors de la décision <StatusBadge status={request.resolvedStatus} /></div> : null}</div> : null}
               </motion.article>
             );
           })}

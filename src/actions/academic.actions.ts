@@ -32,6 +32,8 @@ import {
   validateUser,
 } from "@/lib/admin-domain";
 import {
+  attendanceStatusForSession,
+  validateCorrectionResolution,
   validateAttendanceInput,
   validateTeacherSession,
 } from "@/lib/academic-domain";
@@ -865,12 +867,9 @@ export async function saveAttendanceAction(sessionId: string, input: AttendanceI
   const existing = state.attendances.some((item) => item.sessionId === sessionId && item.studentId === input.studentId);
   const validation = validateAttendanceInput(state, sessionId, input, session.status === "COMPLETED");
   if (!validation.ok) return failure(validation);
-  const checkedInAt = input.checkedInAt ? fromAcademicDateTime(session.date, input.checkedInAt) : null;
-  const automaticStatus = session.status === "ACTIVE" && checkedInAt && ["PRESENT", "LATE"].includes(input.status)
-    ? checkedInAt.getTime() > fromAcademicDateTime(session.date, session.startTime).getTime() + (session.lateThresholdMinutes ?? 10) * 60_000
-      ? "LATE"
-      : "PRESENT"
-    : input.status;
+  const checkedInAt = ["PRESENT", "LATE"].includes(input.status) && input.checkedInAt
+    ? fromAcademicDateTime(session.date, input.checkedInAt) : null;
+  const automaticStatus = attendanceStatusForSession(session, input.status, input.checkedInAt);
   const notificationIds = await prisma.$transaction(async (tx) => {
     await tx.attendance.upsert({
       where: { studentId_sessionId: { studentId: input.studentId, sessionId } },
@@ -1068,16 +1067,8 @@ export async function cancelCorrectionRequestAction(id: string) {
 export async function resolveCorrectionRequestAction(input: CorrectionResolutionInput) {
   const viewer = await viewerFor("TEACHER");
   if (!viewer) return forbidden();
-  if (input.reason.trim().length < 5) return failure({ ok: false, message: "Expliquez votre décision en au moins 5 caractères.", fieldErrors: { reason: "Motif trop court." } });
-  if (input.decision === "APPROVE" && !input.resolvedStatus) return failure({ ok: false, message: "Choisissez le statut final.", fieldErrors: { resolvedStatus: "Statut requis." } });
-  if (
-    input.decision === "APPROVE" &&
-    input.resolvedStatus &&
-    ["PRESENT", "LATE"].includes(input.resolvedStatus) &&
-    !/^\d{2}:\d{2}$/.test(input.checkedInAt ?? "")
-  ) {
-    return failure({ ok: false, message: "Indiquez une heure valide.", fieldErrors: { checkedInAt: "Heure requise." } });
-  }
+  const validation = validateCorrectionResolution(input);
+  if (!validation.ok) return failure(validation);
   const outcome = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "AttendanceCorrectionRequest" WHERE id = ${input.requestId} FOR UPDATE`;
     const request = await tx.attendanceCorrectionRequest.findFirst({
@@ -1085,22 +1076,22 @@ export async function resolveCorrectionRequestAction(input: CorrectionResolution
       include: { session: true },
     });
     if (!request || request.session.status !== "COMPLETED") return null;
-    let finalStatus = input.resolvedStatus;
+    const finalStatus = input.resolvedStatus;
+    let attendanceId = request.attendanceId;
     if (input.decision === "APPROVE" && input.resolvedStatus) {
-      const checkedInAt = ["PRESENT", "LATE"].includes(input.resolvedStatus)
+      const checkedInAt = ["PRESENT", "LATE"].includes(input.resolvedStatus) && input.checkedInAt
         ? fromAcademicDateTime(toAcademicDate(request.session.scheduledStartAt), input.checkedInAt!)
         : null;
-      if (checkedInAt) {
-        const lateAfter = new Date(request.session.scheduledStartAt.getTime() + request.session.lateThresholdMinutes * 60_000);
-        finalStatus = checkedInAt > lateAfter ? "LATE" : "PRESENT";
-      }
-      await tx.attendance.upsert({
+      const attendance = await tx.attendance.upsert({
         where: { studentId_sessionId: { studentId: request.studentId, sessionId: request.sessionId } },
         create: { studentId: request.studentId, sessionId: request.sessionId, status: finalStatus!, source: "MANUAL", checkedInAt, note: finalStatus === "EXCUSED" ? request.reason : null, correctionReason: input.reason.trim(), correctedAt: new Date(), correctedById: viewer.id },
         update: { status: finalStatus!, checkedInAt, note: finalStatus === "EXCUSED" ? request.reason : null, correctionReason: input.reason.trim(), correctedAt: new Date(), correctedById: viewer.id },
       });
+      attendanceId = attendance.id;
     }
-    await tx.attendanceCorrectionRequest.update({ where: { id: request.id }, data: { status: input.decision === "APPROVE" ? "APPROVED" : "REJECTED", decisionReason: input.reason.trim(), resolvedStatus: input.decision === "APPROVE" ? finalStatus : null, resolvedById: viewer.id, resolvedAt: new Date() } });
+    await tx.attendanceCorrectionRequest.update({ where: { id: request.id }, data: { attendanceId, status: input.decision === "APPROVE" ? "APPROVED" : "REJECTED", decisionReason: input.reason.trim(), resolvedStatus: input.decision === "APPROVE" ? finalStatus : null, resolvedById: viewer.id, resolvedAt: new Date() } });
+    await audit(viewer.id, input.decision === "APPROVE" ? "APPROVE_CORRECTION_REQUEST" : "REJECT_CORRECTION_REQUEST", "AttendanceCorrectionRequest", request.id,
+      input.decision === "APPROVE" ? { finalStatus, attendanceId } : undefined, tx);
     const approved = input.decision === "APPROVE";
     const notificationIds = await createUserNotifications(tx, [request.studentId], {
       kind: "CORRECTION_RESOLVED",
@@ -1114,13 +1105,6 @@ export async function resolveCorrectionRequestAction(input: CorrectionResolution
     return { requestId: request.id, finalStatus, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (!outcome) return failure({ ok: false, message: "Cette demande n’est plus disponible." });
-  await audit(
-    viewer.id,
-    input.decision === "APPROVE" ? "APPROVE_CORRECTION_REQUEST" : "REJECT_CORRECTION_REQUEST",
-    "AttendanceCorrectionRequest",
-    outcome.requestId,
-    input.decision === "APPROVE" ? { finalStatus: outcome.finalStatus } : undefined,
-  );
   await deliverNotificationPush(outcome.notificationIds).catch(() => undefined);
   return success(viewer, input.decision === "APPROVE" ? "Correction acceptée et appliquée." : "Demande refusée.", ["correctionRequests", "attendances", "sessions"]);
 }
