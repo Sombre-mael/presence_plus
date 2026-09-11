@@ -10,6 +10,7 @@ import { clientIpFromHeaders } from "@/lib/auth-request.server";
 import { clearLoginThrottle, isAuthThrottled, registerAuthFailure } from "@/lib/auth-throttle.server";
 import { normalizeIdentifier } from "@/lib/auth-crypto.server";
 import { createAuthSession } from "@/lib/auth-session.server";
+import { AUTH_SESSION_TOKEN_MAX_AGE_SECONDS } from "@/lib/auth-session-policy";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 
@@ -24,8 +25,8 @@ const credentialsSchema = z.object({
 
 export const authOptions: NextAuthOptions = {
   secret: authSecret(),
-  session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
-  jwt: { maxAge: 8 * 60 * 60 },
+  session: { strategy: "jwt", maxAge: AUTH_SESSION_TOKEN_MAX_AGE_SECONDS },
+  jwt: { maxAge: AUTH_SESSION_TOKEN_MAX_AGE_SECONDS },
   pages: { signIn: "/login" },
   useSecureCookies: secureCookies,
   cookies: {

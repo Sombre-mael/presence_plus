@@ -5,11 +5,13 @@ import { hashSensitiveKey } from "@/lib/auth-crypto.server";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { prisma } from "@/lib/prisma";
 import type { AuthSessionSummary } from "@/types/auth";
+import {
+  AUTH_SESSION_ACTIVITY_WRITE_INTERVAL_MS,
+  AUTH_SESSION_MAX_AGE_MS,
+  isAuthSessionIdleExpired,
+} from "@/lib/auth-session-policy";
 
 type SessionDatabase = Pick<Prisma.TransactionClient, "authSession">;
-
-export const AUTH_SESSION_MAX_AGE_MS = 8 * 60 * 60_000;
-const ACTIVITY_WRITE_INTERVAL_MS = 15 * 60_000;
 
 function headerValue(source: Headers | Record<string, string | string[] | undefined> | undefined, name: string) {
   if (!source) return null;
@@ -45,10 +47,17 @@ export async function validateAuthSession(id: string, userId: string, now = new 
     select: { lastSeenAt: true },
   }));
   if (!session) return false;
-  if (now.getTime() - session.lastSeenAt.getTime() >= ACTIVITY_WRITE_INTERVAL_MS) {
+  if (isAuthSessionIdleExpired(session.lastSeenAt, now)) {
     await withDatabaseRetry(() => prisma.authSession.updateMany({
-      where: { id, userId, revokedAt: null, expiresAt: { gt: now }, lastSeenAt: { lt: new Date(now.getTime() - ACTIVITY_WRITE_INTERVAL_MS) } },
-      data: { lastSeenAt: now },
+      where: { id, userId, revokedAt: null },
+      data: { revokedAt: now, revokedReason: "IDLE_TIMEOUT" },
+    }));
+    return false;
+  }
+  if (now.getTime() - session.lastSeenAt.getTime() >= AUTH_SESSION_ACTIVITY_WRITE_INTERVAL_MS) {
+    await withDatabaseRetry(() => prisma.authSession.updateMany({
+      where: { id, userId, revokedAt: null, expiresAt: { gt: now }, lastSeenAt: { lt: new Date(now.getTime() - AUTH_SESSION_ACTIVITY_WRITE_INTERVAL_MS) } },
+      data: { lastSeenAt: now, expiresAt: new Date(now.getTime() + AUTH_SESSION_MAX_AGE_MS) },
     }));
   }
   return true;

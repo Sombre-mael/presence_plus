@@ -53,7 +53,7 @@ export function AccountSecurity({ initialSessions }: { initialSessions: AuthSess
       <section className="border bg-background">
         <div className="flex items-start gap-3 border-b p-5 sm:p-6">
           <ShieldCheck className="mt-0.5 size-5 text-primary" />
-          <div><h2 className="font-semibold">Appareils connectés</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Les sessions expirent automatiquement après huit heures.</p></div>
+          <div><h2 className="font-semibold">Appareils connectés</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">La connexion reste active sur vos appareils utilisés régulièrement et expire après sept jours sans activité.</p></div>
         </div>
         <div className="divide-y">
           {sessions.map((session) => (
