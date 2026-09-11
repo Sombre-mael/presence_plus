@@ -65,6 +65,7 @@ import type { AuthAccessCredential } from "@/types/auth";
 import { createUserNotifications, deliverNotificationPush } from "@/lib/notifications.server";
 import { studentProfilePhotoRequired } from "@/lib/profile-photo.server";
 import { isSuperAdmin, verifyViewerPassword } from "@/lib/admin-access.server";
+import { getAttendancePolicy } from "@/lib/attendance-policy.server";
 
 export type AcademicActionResult<T = undefined> = MutationResult & {
   patch?: AcademicPatch;
@@ -175,7 +176,7 @@ export async function loadAcademicDataAction() {
   return {
     viewerId: viewer.id,
     role: viewer.role,
-    state: await getAcademicSnapshot(viewer),
+    state: await getAcademicSnapshot(viewer, { operationalWindowDays: viewer.role === "ADMIN" ? 180 : undefined }),
     syncedAt: new Date().toISOString(),
   };
 }
@@ -539,6 +540,28 @@ export async function deletePromotionAction(id: string) {
   return success(viewer, "Promotion supprimée.", ["promotions", "auditLogs"]);
 }
 
+export async function setPromotionArchivedAction(id: string, archived: boolean) {
+  const viewer = await viewerFor("ADMIN");
+  if (!viewer) return forbidden();
+  try {
+    await prisma.$transaction(async (tx) => {
+      const promotion = await tx.promotion.findUnique({ where: { id }, select: { archivedAt: true } });
+      if (!promotion) throw Object.assign(new Error("Promotion introuvable."), { code: "BUSINESS_RULE" });
+      if (archived) {
+        const blocking = await tx.session.count({ where: { promotionId: id, status: { in: ["SCHEDULED", "ACTIVE"] } } });
+        if (blocking) throw Object.assign(new Error(`${blocking} séance(s) planifiée(s) ou active(s) doivent d’abord être traitées.`), { code: "BUSINESS_RULE" });
+        await tx.course.updateMany({ where: { promotionId: id, active: true }, data: { active: false } });
+      }
+      await tx.promotion.update({ where: { id }, data: { archivedAt: archived ? new Date() : null } });
+      await audit(viewer.id, archived ? "ARCHIVE_PROMOTION" : "RESTORE_PROMOTION", "Promotion", id, { coursesDeactivated: archived }, tx);
+    }, SERIALIZABLE_TRANSACTION_OPTIONS);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "BUSINESS_RULE") return failure({ ok: false, message: error.message });
+    return prismaFailure(error, "L’état de la promotion n’a pas pu être modifié.");
+  }
+  return success(viewer, archived ? "Promotion archivée. Ses cours ont été désactivés sans supprimer l’historique." : "Promotion restaurée. Réactivez ensuite les cours nécessaires.", ["promotions", "courses", "auditLogs"]);
+}
+
 export async function createCourseAction(input: AdminCourseInput) {
   const viewer = await viewerFor("ADMIN");
   if (!viewer) return forbidden();
@@ -617,6 +640,10 @@ export async function setCourseActiveAction(id: string, active: boolean) {
   if (!viewer) return forbidden();
   try {
     await prisma.$transaction(async (tx) => {
+      if (active) {
+        const course = await tx.course.findFirst({ where: { id, promotion: { archivedAt: null } }, select: { id: true } });
+        if (!course) throw Object.assign(new Error("Restaurez la promotion avant de réactiver ce cours."), { code: "BUSINESS_RULE" });
+      }
       if (!active) {
         const blocking = await tx.session.count({ where: { courseId: id, status: { in: ["SCHEDULED", "ACTIVE"] } } });
         if (blocking) throw Object.assign(new Error(`${blocking} session(s) planifiée(s) ou active(s) empêchent la désactivation.`), { code: "BUSINESS_RULE" });
@@ -642,7 +669,7 @@ export async function createSessionAction(input: TeacherSessionInput) {
   const start = fromAcademicDateTime(input.date, input.startTime);
   const end = fromAcademicDateTime(input.date, input.endTime);
   const outcome = await prisma.$transaction(async (tx) => {
-    const available = await tx.course.findFirst({ where: { id: course.id, teacherId: viewer.id, active: true } });
+    const available = await tx.course.findFirst({ where: { id: course.id, teacherId: viewer.id, active: true, promotion: { archivedAt: null } } });
     if (!available) return null;
     const conflict = await tx.session.findFirst({
       where: {
@@ -701,6 +728,8 @@ export async function updateSessionAction(id: string, input: TeacherSessionInput
   const start = fromAcademicDateTime(input.date, input.startTime);
   const end = fromAcademicDateTime(input.date, input.endTime);
   const outcome = await prisma.$transaction(async (tx) => {
+    const available = await tx.course.findFirst({ where: { id: course.id, teacherId: viewer.id, active: true, promotion: { archivedAt: null } }, select: { id: true } });
+    if (!available) return null;
     const conflict = await tx.session.findFirst({
       where: {
         id: { not: id },
@@ -740,11 +769,12 @@ export async function updateSessionAction(id: string, input: TeacherSessionInput
 export async function startSessionAction(id: string) {
   const viewer = await viewerFor("TEACHER");
   if (!viewer) return forbidden();
+  const policy = await getAttendancePolicy();
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.session.findUnique({ where: { id } });
     if (!session || session.teacherId !== viewer.id || session.status !== "SCHEDULED") return { kind: "INVALID" as const, notificationIds: [] };
     const now = new Date();
-    if (!isWithinSessionStartWindow(session.scheduledStartAt, session.scheduledEndAt, now)) return { kind: "OUTSIDE_WINDOW" as const, notificationIds: [] };
+    if (!isWithinSessionStartWindow(session.scheduledStartAt, session.scheduledEndAt, now, policy.sessionStartEarlyMinutes * 60_000)) return { kind: "OUTSIDE_WINDOW" as const, notificationIds: [] };
     const active = await tx.session.count({ where: { teacherId: viewer.id, status: "ACTIVE" } });
     if (active) return { kind: "ACTIVE_EXISTS" as const, notificationIds: [] };
     const students = await tx.user.findMany({
@@ -768,7 +798,7 @@ export async function startSessionAction(id: string) {
     });
     return { kind: "STARTED" as const, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
-  if (result.kind === "OUTSIDE_WINDOW") return failure({ ok: false, message: "La session peut démarrer au plus tôt 30 minutes avant son horaire et avant sa fin prévue." });
+  if (result.kind === "OUTSIDE_WINDOW") return failure({ ok: false, message: `La session peut démarrer au plus tôt ${policy.sessionStartEarlyMinutes} minutes avant son horaire et avant sa fin prévue.` });
   if (result.kind === "ACTIVE_EXISTS") return failure({ ok: false, message: "Clôturez la session active avant d'en démarrer une autre." });
   if (result.kind !== "STARTED") return failure({ ok: false, message: "Cette session ne peut pas être démarrée." });
   await audit(viewer.id, "START_SESSION", "Session", id);
@@ -906,8 +936,9 @@ export async function getQrTokenAction(sessionId: string) {
     select: { id: true },
   });
   if (!session) return { ok: false as const, message: "Le QR est disponible uniquement pour une session active." };
-  const token = createServerQrToken(sessionId);
-  return { ok: true as const, token: token.value, expiresAt: token.expiresAt, payload: JSON.stringify({ sessionId, token: token.value, expiresAt: token.expiresAt }) };
+  const policy = await getAttendancePolicy();
+  const token = createServerQrToken(sessionId, Date.now(), policy.qrRotationSeconds * 1_000);
+  return { ok: true as const, token: token.value, expiresAt: token.expiresAt, rotationSeconds: policy.qrRotationSeconds, payload: JSON.stringify({ sessionId, token: token.value, expiresAt: token.expiresAt }) };
 }
 
 export async function validateStudentCodeAction(raw: string, source: Extract<AttendanceSource, "QR" | "STUDENT_CODE">): Promise<CheckInActionResult> {
@@ -920,6 +951,8 @@ export async function validateStudentCodeAction(raw: string, source: Extract<Att
   const student = await prisma.user.findFirst({ where: { id: viewer.id, role: "STUDENT", status: "ACTIVE" } });
   if (!student?.promotionId) return { ok: false, code: "STUDENT_INACTIVE", message: "Votre compte étudiant n’est pas actif." };
   const now = new Date();
+  const policy = await getAttendancePolicy();
+  const rotationMs = policy.qrRotationSeconds * 1_000;
   if (await studentProfilePhotoRequired(viewer.id, now)) {
     return { ok: false, code: "PHOTO_REQUIRED", message: "Une photo de profil approuvée est nécessaire pour pointer votre présence." };
   }
@@ -936,9 +969,9 @@ export async function validateStudentCodeAction(raw: string, source: Extract<Att
     if (requested.status !== "ACTIVE" || requested.scheduledEndAt <= now) return { ok: false, code: "SESSION_CLOSED", message: "Le pointage de cette session est fermé." };
     if (requested.promotionId !== student.promotionId) return { ok: false, code: "WRONG_PROMOTION", message: "Cette session ne concerne pas votre promotion." };
   }
-  const session = parsed.sessionId ? sessions.find((item) => item.id === parsed.sessionId) : sessions.find((item) => matchesServerQrToken(item.id, parsed.token));
+  const session = parsed.sessionId ? sessions.find((item) => item.id === parsed.sessionId) : sessions.find((item) => matchesServerQrToken(item.id, parsed.token, Date.now(), rotationMs));
   if (!session) return { ok: false, code: "INVALID", message: "Code invalide ou session indisponible." };
-  if (!matchesServerQrToken(session.id, parsed.token)) return { ok: false, code: parsed.expiresAt && parsed.expiresAt < Date.now() ? "EXPIRED" : "INVALID", message: "Ce code est invalide ou expiré." };
+  if (!matchesServerQrToken(session.id, parsed.token, Date.now(), rotationMs)) return { ok: false, code: parsed.expiresAt && parsed.expiresAt < Date.now() ? "EXPIRED" : "INVALID", message: "Ce code est invalide ou expiré." };
   const existing = await prisma.attendance.findUnique({ where: { studentId_sessionId: { studentId: viewer.id, sessionId: session.id } } });
   const issued = createPreviewReceipt(session.id, viewer.id, parsed.token, source);
   const preview: CheckInPreview = { sessionId: session.id, studentId: viewer.id, token: parsed.token.toUpperCase(), source, validatedAt: Date.now(), confirmationExpiresAt: issued.expiresAt, receipt: issued.receipt };
@@ -1002,6 +1035,11 @@ export async function createCorrectionRequestAction(input: CorrectionRequestInpu
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${viewer.id} FOR UPDATE`;
     const session = await tx.session.findUnique({ where: { id: input.sessionId } });
     if (!session) return { kind: "SESSION_MISSING" as const };
+    const policy = await tx.systemSetting.findUnique({ where: { id: "default" }, select: { correctionWindowDays: true } });
+    const completedAt = session.completedAt ?? session.scheduledEndAt;
+    if (session.status !== "COMPLETED" || completedAt.getTime() + (policy?.correctionWindowDays ?? 30) * 86_400_000 < Date.now()) {
+      return { kind: "WINDOW_CLOSED" as const };
+    }
     const pending = await tx.attendanceCorrectionRequest.findFirst({
       where: { sessionId: input.sessionId, studentId: viewer.id, status: "PENDING" },
       select: { id: true },
@@ -1032,6 +1070,7 @@ export async function createCorrectionRequestAction(input: CorrectionRequestInpu
     return { kind: "CREATED" as const, id: request.id, notificationIds };
   }, SERIALIZABLE_TRANSACTION_OPTIONS);
   if (outcome.kind === "SESSION_MISSING") return failure({ ok: false, message: "Session introuvable." });
+  if (outcome.kind === "WINDOW_CLOSED") return failure({ ok: false, message: "Le délai autorisé pour demander une correction est dépassé." });
   if (outcome.kind === "PENDING_EXISTS") return failure({ ok: false, message: "Une demande est déjà en attente pour cette session." });
   if (outcome.kind === "STATUS_UNCHANGED") return failure({ ok: false, message: "Le statut demandé est déjà celui enregistré." });
   await audit(viewer.id, "CREATE_CORRECTION_REQUEST", "AttendanceCorrectionRequest", outcome.id);

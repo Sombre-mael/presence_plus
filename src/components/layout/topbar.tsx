@@ -30,6 +30,7 @@ const labels: Record<string, string> = {
   users: "Utilisateurs",
   promotions: "Promotions",
   courses: "Cours",
+  import: "Importation",
   statistics: "Statistiques",
   audit: "Journal d’activité",
   sessions: "Sessions",

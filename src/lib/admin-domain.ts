@@ -12,6 +12,7 @@ import type {
 } from "@/types/admin";
 import { isStoredAcademicData } from "./academic-domain";
 import { addAcademicDays, currentAcademicDate } from "./academic-calendar";
+import { attendancePolicyOf } from "./attendance-policy";
 
 const requiredText = z.string().trim().min(2, "Ce champ doit contenir au moins 2 caractères.");
 const requiredEmail = z.string().trim().max(160, "Maximum 160 caractères.").refine(
@@ -118,9 +119,11 @@ export function validateCourse(
   if (!state.users.some((user) => user.id === input.teacherId && user.role === "TEACHER" && user.status === "ACTIVE")) {
     return { ok: false, message: "L’enseignant sélectionné est indisponible.", fieldErrors: { teacherId: "Enseignant indisponible." } };
   }
-  if (!state.promotions.some((promotion) => promotion.id === input.promotionId)) {
+  const promotion = state.promotions.find((item) => item.id === input.promotionId);
+  if (!promotion) {
     return { ok: false, message: "La promotion sélectionnée est introuvable.", fieldErrors: { promotionId: "Promotion introuvable." } };
   }
+  if (promotion.archivedAt) return { ok: false, message: "Une promotion archivée ne peut pas recevoir de nouveau cours.", fieldErrors: { promotionId: "Restaurez cette promotion avant de continuer." } };
   return { ok: true, message: editingId ? "Cours mis à jour." : "Cours ajouté." };
 }
 
@@ -187,15 +190,16 @@ export function getAdminDashboardStats(state: AdminDataState): AdminDashboardSta
 }
 
 export function getAdminAnomalies(state: AdminDataState): AdminAnomaly[] {
+  const alertThreshold = attendancePolicyOf(state.attendancePolicy).attendanceAlertThreshold;
   const anomalies: AdminAnomaly[] = [];
   for (const session of state.sessions.filter((item) => item.status === "ACTIVE")) {
     const rate = session.expectedCount ? Math.round((session.presentCount / session.expectedCount) * 100) : 0;
-    if (rate < 80) {
+    if (rate < alertThreshold) {
       anomalies.push({
         id: `session-${session.id}`,
         severity: "HIGH",
         title: "Participation sous le seuil",
-        detail: `${session.courseCode} est à ${rate}% de présence.`,
+        detail: `${session.courseCode} est à ${rate}% de présence (seuil ${alertThreshold}%).`,
         href: `/admin/sessions/${session.id}`,
       });
     }

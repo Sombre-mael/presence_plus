@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   if (viewer.role !== "ADMIN") redirect(roleHome(viewer.role));
   if (viewer.mustChangePassword) redirect("/change-password");
   const collapsed = (await cookies()).get("presence-plus-admin-sidebar")?.value === "collapsed";
-  const initialState = await getAcademicSnapshot(viewer);
+  const initialState = await getAcademicSnapshot(viewer, { operationalWindowDays: 180 });
   return (
     <AdminDataProvider initialState={initialState} viewerId={viewer.id} viewerAdminLevel={viewer.adminLevel}>
       <AdminShell user={viewer} initialSidebarCollapsed={collapsed}>{children}</AdminShell>

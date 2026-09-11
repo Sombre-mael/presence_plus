@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CalendarClock,
   Clock3,
@@ -27,24 +28,26 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getStudentHistory, getStudentStats } from "@/lib/student-domain";
+import { attendancePolicyOf } from "@/lib/attendance-policy";
+import type { SessionSummary } from "@/types";
 
 export function StudentHistory() {
   const { state, viewerId: studentId } = useAcademicData();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
-  const [courseId, setCourseId] = useState("ALL");
+  const [courseId, setCourseId] = useState(searchParams.get("course") ?? "ALL");
   const history = getStudentHistory(state, studentId);
   const stats = getStudentStats(state, studentId);
+  const correctionWindowDays = attendancePolicyOf(state.attendancePolicy).correctionWindowDays;
   const courses = Array.from(
     new Map(history.map(({ session }) => [session.courseId, { id: session.courseId, code: session.courseCode }])).values(),
   );
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("fr");
-    return history.filter(({ session, attendance }) =>
-      (!normalized || `${session.courseCode} ${session.courseName} ${session.teacher}`.toLocaleLowerCase("fr").includes(normalized)) &&
-      (status === "ALL" || (status === "MISSING" ? !attendance : attendance?.status === status)) &&
-      (courseId === "ALL" || session.courseId === courseId));
-  }, [courseId, history, query, status]);
+  const normalized = query.trim().toLocaleLowerCase("fr");
+  const filtered = history.filter(({ session, attendance }) =>
+    (!normalized || `${session.courseCode} ${session.courseName} ${session.teacher}`.toLocaleLowerCase("fr").includes(normalized)) &&
+    (status === "ALL" || (status === "MISSING" ? !attendance : attendance?.status === status)) &&
+    (courseId === "ALL" || session.courseId === courseId));
 
   return (
     <div>
@@ -82,7 +85,7 @@ export function StudentHistory() {
                   <div><p className="mb-2 text-xs text-muted-foreground">Résultat</p>{attendance ? <StatusBadge status={attendance.status} /> : <MissingStatus />}{!attendance && <p className="mt-3 text-xs leading-5 text-sky-800">Aucun résultat n’est associé à cette séance. Elle n’est pas comptée dans vos indicateurs.</p>}{attendance?.note && <p className="mt-3 border-l-2 pl-3 text-sm leading-6 text-muted-foreground">{attendance.note}</p>}{attendance?.correctionReason && <p className="mt-3 text-xs leading-5 text-muted-foreground">Dernière correction: {attendance.correctionReason}</p>}</div>
 
                   {requests.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Historique des demandes</p>{requests.map((item) => <RequestStatus key={item.id} request={item} />)}</div>}
-                  {request?.status === "PENDING" ? <PendingRequest requestId={request.id} /> : <CorrectionDialog sessionId={session.id} attendanceStatus={attendance?.status} />}
+                  {request?.status === "PENDING" ? <PendingRequest requestId={request.id} /> : <CorrectionDialog sessionId={session.id} attendanceStatus={attendance?.status} allowed={correctionAllowed(session, correctionWindowDays)} />}
                 </div>
               </SheetContent>
             </Sheet>
@@ -94,7 +97,7 @@ export function StudentHistory() {
   );
 }
 
-function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; attendanceStatus?: AttendanceStatus }) {
+function CorrectionDialog({ sessionId, attendanceStatus, allowed }: { sessionId: string; attendanceStatus?: AttendanceStatus; allowed: boolean }) {
   const { viewerId: studentId, createCorrectionRequest, isPending } = useAcademicData();
   const availableStatuses = (["PRESENT", "LATE", "EXCUSED"] as const)
     .filter((value) => value !== attendanceStatus);
@@ -121,6 +124,8 @@ function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; 
     }
   }
 
+  if (!allowed) return <p className="border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">Le délai de correction de cette séance est terminé. Contactez l’administration si une anomalie institutionnelle doit être examinée.</p>;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button variant="outline" className="w-full"><FileQuestion /> Demander une correction</Button></DialogTrigger>
@@ -140,6 +145,13 @@ function CorrectionDialog({ sessionId, attendanceStatus }: { sessionId: string; 
 function PendingRequest({ requestId }: { requestId: string }) {
   const { cancelCorrectionRequest, isPending } = useAcademicData();
   return <Button variant="ghost" className="w-full text-destructive" disabled={isPending(`correction:${requestId}:cancel`)} onClick={() => cancelCorrectionRequest(requestId)}><XCircle /> Annuler la demande</Button>;
+}
+
+function correctionAllowed(session: SessionSummary, windowDays: number) {
+  const reference = session.completedAt
+    ? new Date(session.completedAt).getTime()
+    : new Date(`${session.date}T${session.endTime}:00+02:00`).getTime();
+  return Number.isFinite(reference) && Date.now() <= reference + windowDays * 86_400_000;
 }
 
 function RequestStatus({ request }: { request: ReturnType<typeof getStudentHistory>[number]["request"] }) {

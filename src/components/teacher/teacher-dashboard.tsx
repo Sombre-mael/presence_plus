@@ -4,6 +4,8 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import {
   ArrowRight,
+  Activity,
+  BookOpen,
   CalendarDays,
   ClockAlert,
   QrCode,
@@ -17,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { getTeacherNotifications, getTeacherStats } from "@/lib/academic-domain";
 import { getTeacherCorrectionNotifications } from "@/lib/student-domain";
 import { academicDateTimeKey, currentAcademicDateTimeKey } from "@/lib/academic-calendar";
+import { attendancePolicyOf } from "@/lib/attendance-policy";
 
 export function TeacherDashboard() {
   const { state, viewerId: teacherId } = useAcademicData();
@@ -32,6 +35,17 @@ export function TeacherDashboard() {
     session.status === "SCHEDULED" && academicDateTimeKey(session.date, session.startTime) > nowKey,
   ).slice(0, 3);
   const stats = getTeacherStats(state, teacherId);
+  const alertThreshold = attendancePolicyOf(state.attendancePolicy).attendanceAlertThreshold;
+  const teacherCourses = state.courses.filter((course) => course.teacherId === teacherId && course.active !== false);
+  const courseInsights = teacherCourses.map((course) => {
+    const sessions = teacherSessions.filter((session) => session.courseId === course.id && session.status === "COMPLETED");
+    const sessionIds = new Set(sessions.map((session) => session.id));
+    const records = state.attendances.filter((record) => sessionIds.has(record.sessionId));
+    const excused = records.filter((record) => record.status === "EXCUSED").length;
+    const expected = Math.max(0, sessions.reduce((total, session) => total + session.expectedCount, 0) - excused);
+    const attended = records.filter((record) => ["PRESENT", "LATE"].includes(record.status)).length;
+    return { ...course, sessions: sessions.length, rate: expected ? Math.round((attended / expected) * 100) : undefined };
+  }).sort((a, b) => (a.rate ?? 101) - (b.rate ?? 101));
   const attention = [
     ...getTeacherCorrectionNotifications(state, teacherId),
     ...getTeacherNotifications(state, teacherId),
@@ -41,8 +55,8 @@ export function TeacherDashboard() {
     <div className="space-y-7">
       <PageHeader
         title={`Bonjour ${teacher?.name.split(" ")[0] ?? ""}`.trim()}
-        description="Pilotez vos séances et suivez les pointages sans perdre le fil du cours."
-        action={<Button asChild><Link href="/teacher/sessions/new"><CalendarDays /> Planifier une séance</Link></Button>}
+        description="Pilotez vos séances, contrôlez les pointages et suivez l’assiduité de vos groupes."
+        action={<div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href="/teacher/assiduity"><Activity /> Voir l’assiduité</Link></Button><Button asChild><Link href="/teacher/sessions/new"><CalendarDays /> Planifier</Link></Button></div>}
       />
 
       <section className="grid gap-px overflow-hidden border bg-border sm:grid-cols-2 xl:grid-cols-4">
@@ -95,10 +109,20 @@ export function TeacherDashboard() {
           </div>
         </section>
       ) : (
-        <section className="border border-dashed bg-background p-8 text-center">
-          <QrCode className="mx-auto size-6 text-muted-foreground" />
-          <h2 className="mt-3 font-semibold">Aucune session en cours</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Votre prochaine séance apparaîtra ici au démarrage.</p>
+        <section className="border bg-background p-5 sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-4">
+              <span className="flex size-10 shrink-0 items-center justify-center bg-blue-50 text-blue-700"><CalendarDays className="size-5" /></span>
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Prochaine action</p>
+                <h2 className="mt-1 font-semibold">{upcoming[0] ? `${upcoming[0].courseCode} · ${upcoming[0].date} à ${upcoming[0].startTime}` : "Aucune séance planifiée"}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{upcoming[0] ? `${upcoming[0].promotion} · Salle ${upcoming[0].room}` : "Ajoutez une séance pour préparer votre prochain pointage."}</p>
+              </div>
+            </div>
+            <Button asChild variant={upcoming[0] ? "outline" : "default"}>
+              <Link href={upcoming[0] ? `/teacher/sessions/${upcoming[0].id}` : "/teacher/sessions/new"}>{upcoming[0] ? "Ouvrir la séance" : "Planifier"}<ArrowRight /></Link>
+            </Button>
+          </div>
         </section>
       )}
 
@@ -133,6 +157,26 @@ export function TeacherDashboard() {
           </div>
         </section>
       </div>
+
+      <section aria-labelledby="course-follow-up-heading">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div><h2 id="course-follow-up-heading" className="font-semibold">Suivi par cours</h2><p className="mt-1 text-xs text-muted-foreground">Les taux confirmés sur vos séances clôturées.</p></div>
+          <Button asChild variant="ghost" size="sm"><Link href="/teacher/assiduity">Analyse complète <ArrowRight /></Link></Button>
+        </div>
+        {courseInsights.length ? (
+          <div className="grid overflow-hidden border bg-border sm:grid-cols-2 xl:grid-cols-3">
+            {courseInsights.slice(0, 6).map((course) => (
+              <Link key={course.id} href={`/teacher/assiduity?course=${course.id}`} className="group bg-background p-4 transition-colors hover:bg-muted/50">
+                <div className="flex items-start justify-between gap-3"><span className="flex min-w-0 items-center gap-2"><BookOpen className="size-4 shrink-0 text-primary" /><span className="truncate text-sm font-medium">{course.code} · {course.name}</span></span><ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></div>
+                <div className="mt-4 flex items-end justify-between gap-3"><div><p className="metric-number text-2xl font-semibold">{course.rate === undefined ? "—" : `${course.rate}%`}</p><p className="mt-1 text-xs text-muted-foreground">{course.sessions} séance(s) clôturée(s)</p></div><span className={`text-xs font-medium ${course.rate !== undefined && course.rate < alertThreshold ? "text-amber-700" : "text-emerald-700"}`}>{course.rate === undefined ? "En attente" : course.rate < alertThreshold ? "À surveiller" : "Régulier"}</span></div>
+                <div className="mt-3 h-1.5 overflow-hidden bg-muted" aria-hidden="true"><div className={course.rate !== undefined && course.rate < alertThreshold ? "h-full bg-amber-600" : "h-full bg-emerald-600"} style={{ width: `${course.rate ?? 0}%` }} /></div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="border border-dashed bg-background p-8 text-center text-sm text-muted-foreground">Aucun cours actif ne vous est encore affecté.</div>
+        )}
+      </section>
     </div>
   );
 }

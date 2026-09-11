@@ -31,6 +31,17 @@ describe("server QR tokens", () => {
     expect(nextWindow.value).not.toBe(first.value);
   });
 
+  it("honore une rotation configurée par l’établissement", () => {
+    const rotationMs = 30_000;
+    const first = createServerQrToken("session-1", 60_000, rotationMs);
+    const sameWindow = createServerQrToken("session-1", 89_999, rotationMs);
+    const previous = createServerQrToken("session-1", 59_999, rotationMs);
+
+    expect(first.value).toBe(sameWindow.value);
+    expect(first.expiresAt).toBe(90_000);
+    expect(matchesServerQrToken("session-1", previous.value, 60_000, rotationMs)).toBe(true);
+  });
+
   it("signs a preview receipt that expires after 60 seconds", () => {
     const now = 2_000_000;
     const token = createServerQrToken("session-1", now).value;

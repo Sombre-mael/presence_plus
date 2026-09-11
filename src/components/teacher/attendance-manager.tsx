@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, MessageSquareText, Pencil, Plus, Search, UserCheck } from "lucide-react";
+import { Download, MessageSquareText, Pencil, Plus, Printer, Search, UserCheck } from "lucide-react";
 import type { AttendanceStatus } from "@/types";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { CorrectionDecisionDialog } from "@/components/teacher/correction-decision-dialog";
@@ -10,6 +10,7 @@ import { attendanceStatusForSession, getSessionRoster } from "@/lib/academic-dom
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
@@ -53,7 +54,7 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
       <PageHeader
         title="Présences de la session"
         description={`${session.courseName} · ${session.date} · ${roster.length} étudiant(s) inscrit(s)`}
-        action={<div className="flex flex-wrap gap-2"><Button asChild variant="outline"><a href={`/api/exports?${exportParams}`}><Download /> Exporter le résultat</a></Button>{canEdit && <AttendanceDialog sessionId={sessionId} />}</div>}
+        action={<div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href={`/teacher/sessions/${sessionId}/print`}><Printer /> Feuille de secours</Link></Button><Button asChild variant="outline"><a href={`/api/exports?${exportParams}`}><Download /> Exporter le résultat</a></Button>{canEdit && <AttendanceDialog sessionId={sessionId} />}</div>}
       />
 
       {pendingRequests.length > 0 && (
@@ -77,7 +78,15 @@ export function AttendanceManager({ sessionId, highlightedRequestId }: { session
         <div className="divide-y">
           {filtered.map(({ student, attendance }) => (
             <div key={student.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_150px_130px_44px] sm:items-center">
-              <div className="min-w-0"><p className="truncate text-sm font-medium">{student.name}</p><p className="mt-1 text-xs text-muted-foreground">{student.matricule} · {session.promotion}</p></div>
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-medium">{student.name}</p>
+                  <Badge variant={student.profilePhotoStatus === "APPROVED" ? "secondary" : "outline"}>
+                    {student.profilePhotoStatus === "APPROVED" ? "Photo approuvée" : "Photo à vérifier"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{student.matricule} · {session.promotion}</p>
+              </div>
               <div><p className="metric-number text-sm">{attendance?.checkedInAt ?? "—"}</p><p className="mt-1 text-xs text-muted-foreground">{attendance?.source === "MANUAL" ? "Saisie enseignant" : attendance?.source === "QR" ? "QR caméra" : attendance?.source === "STUDENT_CODE" ? "Code étudiant" : "Non pointé"}</p></div>
               <div>{attendance ? <StatusBadge status={attendance.status} /> : <StatusBadge status="PENDING" />}</div>
               <div>{canEdit && <AttendanceDialog sessionId={sessionId} studentId={student.id} trigger={<Button variant="ghost" size="icon" aria-label={`Modifier ${student.name}`}><Pencil /></Button>} />}</div>

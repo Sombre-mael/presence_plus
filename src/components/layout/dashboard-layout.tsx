@@ -18,6 +18,7 @@ import { Topbar } from "./topbar";
 import { RouteTransition } from "./route-transition";
 import { PushPermissionPrompt } from "@/components/notifications/push-permission-prompt";
 import { ProfilePhotoNotice } from "@/components/account/profile-photo-notice";
+import { NetworkStatusBanner } from "@/components/layout/network-status-banner";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -43,8 +44,14 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
 
   return (
     <div className="min-h-screen bg-muted/30">
+      <a
+        href="#contenu-principal"
+        className="fixed left-4 top-4 z-[100] -translate-y-24 bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg transition-transform focus:translate-y-0"
+      >
+        Aller au contenu principal
+      </a>
       <aside
-        className={`fixed inset-y-0 left-0 z-40 hidden border-r bg-sidebar transition-[width] duration-200 lg:block ${
+        className={`print:hidden fixed inset-y-0 left-0 z-40 hidden border-r bg-sidebar transition-[width] duration-200 lg:block ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
@@ -52,7 +59,7 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
       </aside>
 
       <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
-        <div className="sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur lg:px-8">
+        <div className="print:hidden sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur lg:px-8">
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="mr-2 lg:hidden" aria-label="Ouvrir la navigation">
@@ -70,7 +77,12 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
           <Topbar role={role} user={user} anomalies={anomalies} onReloadData={onReloadData} />
         </div>
 
-        <main className="mx-auto w-full max-w-[1440px] p-4 sm:p-6 lg:p-8">
+        <NetworkStatusBanner />
+        <main
+          id="contenu-principal"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1440px] p-4 outline-none print:max-w-none print:p-0 sm:p-6 lg:p-8"
+        >
           <ProfilePhotoNotice user={user} />
           <RouteTransition>{children}</RouteTransition>
         </main>

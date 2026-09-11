@@ -27,6 +27,7 @@ export interface AdminUser {
   invitationExpiresAt?: string;
   deliveryStatus?: AuthDeliveryStatus;
   activeSessionCount?: number;
+  profilePhotoStatus?: "APPROVED" | "MISSING";
   createdAt: string;
   updatedAt?: string;
 }
@@ -37,6 +38,7 @@ export interface AdminPromotion {
   department: string;
   academicYear: string;
   description?: string;
+  archivedAt?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -78,6 +80,15 @@ export interface SystemAdminSummary {
 export interface SystemAdministrationData {
   admins: SystemAdminSummary[];
   profilePhotoEnforcementAt: string;
+  attendancePolicy: AttendancePolicy;
+}
+
+export interface AttendancePolicy {
+  attendanceAlertThreshold: number;
+  defaultLateThresholdMinutes: number;
+  sessionStartEarlyMinutes: number;
+  qrRotationSeconds: number;
+  correctionWindowDays: number;
 }
 
 export interface AcademicDataState {
@@ -89,6 +100,7 @@ export interface AcademicDataState {
   attendances: AttendanceRecord[];
   correctionRequests: AttendanceCorrectionRequest[];
   auditLogs: AdminAuditLog[];
+  attendancePolicy?: AttendancePolicy;
 }
 
 export type AdminDataState = AcademicDataState;
@@ -97,7 +109,7 @@ export type AdminUserInput = Pick<AdminUser, "name" | "email" | "role" | "status
   currentPassword?: string;
 };
 export type UserAccessMutationValue = Partial<AuthAccessCredential> & { id?: string };
-export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt" | "updatedAt">;
+export type AdminPromotionInput = Omit<AdminPromotion, "id" | "createdAt" | "updatedAt" | "archivedAt">;
 export type AdminCourseInput = Omit<AdminCourse, "id" | "createdAt" | "updatedAt">;
 
 export interface MutationResult {

@@ -21,6 +21,8 @@ import {
   MessageSquareText,
   Images,
   Settings,
+  FileUp,
+  Activity,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { AdminLevel, Role } from "@/types";
@@ -48,7 +50,10 @@ const navigation: Record<Role, NavItem[]> = {
     { href: "/admin/users", label: "Utilisateurs", icon: Users },
     { href: "/admin/promotions", label: "Promotions", icon: GraduationCap },
     { href: "/admin/courses", label: "Cours", icon: BookOpen },
+    { href: "/admin/import", label: "Importation", icon: FileUp },
     { href: "/admin/sessions", label: "Sessions", icon: CalendarCheck },
+    { href: "/admin/assiduity", label: "Assiduité", icon: Activity },
+    { href: "/admin/corrections", label: "Corrections", icon: MessageSquareText },
     { href: "/admin/statistics", label: "Statistiques", icon: BarChart3 },
     { href: "/admin/audit", label: "Journal d’activité", icon: ScrollText },
     { href: "/admin/photo-reviews", label: "Vérification des photos", icon: Images },
@@ -137,6 +142,7 @@ export function Sidebar({ role, adminLevel, mobile = false, collapsed = false, o
           const link = (
             <Link
               href={item.href}
+              aria-current={active ? "page" : undefined}
               aria-label={collapsed ? item.label : undefined}
               className={cn(
                 "relative flex h-10 items-center gap-3 overflow-hidden rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

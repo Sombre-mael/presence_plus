@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Check, Copy, ExternalLink, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, Share2, ShieldOff, Trash2, UserRound } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, Check, Copy, ExternalLink, Eye, GraduationCap, KeyRound, Mail, MoreHorizontal, Pencil, Plus, Power, Search, Share2, ShieldOff, Trash2, UserRound } from "lucide-react";
 import { useAdminData } from "@/components/admin/admin-data-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -452,8 +452,6 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   const selectedBlockers = selected ? deleteBlockers.get(selected.id) ?? [] : [];
   const canManageSelected = !selected || selected.role !== "ADMIN" || viewerAdminLevel === "SUPER";
 
-  useEffect(() => setAdminPassword(""), [selectedId]);
-
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     const values = { q: query, role: role === "ALL" ? "" : role, status: status === "ALL" ? "" : status };
@@ -474,6 +472,11 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
   function edit(id: string) {
     setEditingId(id);
     setFormOpen(true);
+  }
+
+  function selectUser(id: string | undefined) {
+    setAdminPassword("");
+    setSelectedId(id);
   }
 
   function accessState(user: AdminUser) {
@@ -526,7 +529,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                 return (
                   <TableRow key={user.id}>
                     <TableCell>
-                      <button className="text-left" onClick={() => setSelectedId(user.id)}>
+                      <button className="text-left" onClick={() => selectUser(user.id)}>
                         <span className="block font-medium">{user.name}</span>
                         <span className="block text-xs text-muted-foreground">{user.email}</span>
                       </button>
@@ -534,7 +537,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
                     <TableCell>{roleLabels[user.role]}</TableCell>
                     <TableCell>{promotion?.name ?? "—"}</TableCell>
                     <TableCell><Badge className={accessState(user).className}>{accessState(user).label}</Badge></TableCell>
-                    <TableCell><RowActions editDisabled={user.role === "ADMIN" && viewerAdminLevel !== "SUPER"} deleteDisabled={Boolean(deleteBlockers.get(user.id)?.length) || (user.role === "ADMIN" && viewerAdminLevel !== "SUPER")} onView={() => setSelectedId(user.id)} onEdit={() => edit(user.id)} onDelete={() => { setSelectedId(user.id); setDeleteOpen(true); }} /></TableCell>
+                    <TableCell><RowActions editDisabled={user.role === "ADMIN" && viewerAdminLevel !== "SUPER"} deleteDisabled={Boolean(deleteBlockers.get(user.id)?.length) || (user.role === "ADMIN" && viewerAdminLevel !== "SUPER")} onView={() => selectUser(user.id)} onEdit={() => edit(user.id)} onDelete={() => { selectUser(user.id); setDeleteOpen(true); }} /></TableCell>
                   </TableRow>
                 );
               })}
@@ -544,7 +547,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
 
         <div className="divide-y md:hidden">
           {filtered.map((user) => (
-            <button key={user.id} onClick={() => setSelectedId(user.id)} className="flex w-full items-center gap-3 p-4 text-left">
+            <button key={user.id} onClick={() => selectUser(user.id)} className="flex w-full items-center gap-3 p-4 text-left">
               <span className="flex size-9 shrink-0 items-center justify-center bg-primary/8 text-primary"><UserRound className="size-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{user.name}</span>
@@ -557,7 +560,7 @@ export function UsersManager({ initialStatus = "ALL" }: { initialStatus?: string
         {!filtered.length && <p className="p-8 text-center text-sm text-muted-foreground">Aucun utilisateur ne correspond aux filtres.</p>}
       </div>
 
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}>
+      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && selectUser(undefined)}>
         <SheetContent className="w-full overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-md">
           {selected && (
             <>
@@ -637,7 +640,7 @@ function PromotionFormDialog({ open, onOpenChange, promotion }: { open: boolean;
 }
 
 export function PromotionsManager() {
-  const { state, deletePromotion } = useAdminData();
+  const { state, deletePromotion, setPromotionArchived, isPending } = useAdminData();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
   const [editingId, setEditingId] = useState<string>();
@@ -662,21 +665,21 @@ export function PromotionsManager() {
         <div className="border-b p-4"><SearchField value={query} onChange={setQuery} placeholder="Rechercher une promotion ou un département..." /></div>
         <div className="hidden md:block">
           <Table>
-            <TableHeader><TableRow><TableHead>Promotion</TableHead><TableHead>Année</TableHead><TableHead>Étudiants</TableHead><TableHead>Cours</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Promotion</TableHead><TableHead>État</TableHead><TableHead>Année</TableHead><TableHead>Étudiants</TableHead><TableHead>Cours</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
             <TableBody>{filtered.map((promotion) => {
               const summary = counts(promotion.id);
-              return <TableRow key={promotion.id}><TableCell><button className="text-left" onClick={() => setSelectedId(promotion.id)}><span className="block font-medium">{promotion.name}</span><span className="text-xs text-muted-foreground">{promotion.department}</span></button></TableCell><TableCell>{promotion.academicYear}</TableCell><TableCell>{summary.students}</TableCell><TableCell>{summary.courses}</TableCell><TableCell><RowActions deleteDisabled={Boolean(deleteBlockers.get(promotion.id)?.length)} onView={() => setSelectedId(promotion.id)} onEdit={() => edit(promotion.id)} onDelete={() => { setSelectedId(promotion.id); setDeleteOpen(true); }} /></TableCell></TableRow>;
+              return <TableRow key={promotion.id}><TableCell><button className="text-left" onClick={() => setSelectedId(promotion.id)}><span className="block font-medium">{promotion.name}</span><span className="text-xs text-muted-foreground">{promotion.department}</span></button></TableCell><TableCell><Badge variant={promotion.archivedAt ? "secondary" : "default"}>{promotion.archivedAt ? "Archivée" : "Active"}</Badge></TableCell><TableCell>{promotion.academicYear}</TableCell><TableCell>{summary.students}</TableCell><TableCell>{summary.courses}</TableCell><TableCell><RowActions deleteDisabled={Boolean(deleteBlockers.get(promotion.id)?.length)} onView={() => setSelectedId(promotion.id)} onEdit={() => edit(promotion.id)} onDelete={() => { setSelectedId(promotion.id); setDeleteOpen(true); }} /></TableCell></TableRow>;
             })}</TableBody>
           </Table>
         </div>
         <div className="divide-y md:hidden">{filtered.map((promotion) => {
           const summary = counts(promotion.id);
-          return <button key={promotion.id} onClick={() => setSelectedId(promotion.id)} className="flex w-full items-center gap-3 p-4 text-left"><span className="flex size-9 items-center justify-center bg-primary/8 text-primary"><GraduationCap className="size-4" /></span><span className="min-w-0 flex-1"><span className="block font-medium">{promotion.name}</span><span className="block truncate text-xs text-muted-foreground">{promotion.department}</span></span><span className="text-right text-xs text-muted-foreground">{summary.students} étudiants<br />{summary.courses} cours</span></button>;
+          return <button key={promotion.id} onClick={() => setSelectedId(promotion.id)} className="flex w-full items-center gap-3 p-4 text-left"><span className="flex size-9 items-center justify-center bg-primary/8 text-primary"><GraduationCap className="size-4" /></span><span className="min-w-0 flex-1"><span className="block font-medium">{promotion.name}</span><span className="block truncate text-xs text-muted-foreground">{promotion.department}</span></span><span className="text-right text-xs text-muted-foreground">{promotion.archivedAt ? "Archivée" : `${summary.students} étudiants`}<br />{summary.courses} cours</span></button>;
         })}</div>
         {!filtered.length && <p className="p-8 text-center text-sm text-muted-foreground">Aucune promotion ne correspond à la recherche.</p>}
       </div>
       <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}>
-        <SheetContent className="w-full sm:max-w-md">{selected && <><SheetHeader><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.department}</SheetDescription></SheetHeader><div className="px-4"><DetailLine label="Année">{selected.academicYear}</DetailLine><DetailLine label="Description">{selected.description ?? "Aucune description"}</DetailLine><DetailLine label="Étudiants actifs">{counts(selected.id).students}</DetailLine><DetailLine label="Cours">{counts(selected.id).courses}</DetailLine>{selectedBlockers.length > 0 && <Alert className="mt-4"><AlertTitle>Suppression indisponible</AlertTitle><AlertDescription>{selectedBlockers.join(" ")}</AlertDescription></Alert>}</div><SheetFooter className="grid grid-cols-2"><Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button><Button variant="destructive" disabled={selectedBlockers.length > 0} onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button></SheetFooter></>}</SheetContent>
+        <SheetContent className="w-full sm:max-w-md">{selected && <><SheetHeader><SheetTitle>{selected.name}</SheetTitle><SheetDescription>{selected.department}</SheetDescription></SheetHeader><div className="px-4"><DetailLine label="État"><Badge variant={selected.archivedAt ? "secondary" : "default"}>{selected.archivedAt ? "Archivée" : "Active"}</Badge></DetailLine><DetailLine label="Année">{selected.academicYear}</DetailLine><DetailLine label="Description">{selected.description ?? "Aucune description"}</DetailLine><DetailLine label="Étudiants actifs">{counts(selected.id).students}</DetailLine><DetailLine label="Cours">{counts(selected.id).courses}</DetailLine>{selectedBlockers.length > 0 && <Alert className="mt-4"><AlertTitle>Suppression indisponible</AlertTitle><AlertDescription>{selectedBlockers.join(" ")}</AlertDescription></Alert>}</div><SheetFooter className="grid grid-cols-1 sm:grid-cols-3"><Button variant="outline" onClick={() => edit(selected.id)}><Pencil />Modifier</Button><Button variant="outline" disabled={isPending(`promotion:${selected.id}:archive`)} onClick={() => setPromotionArchived(selected.id, !selected.archivedAt)}>{selected.archivedAt ? <ArchiveRestore /> : <Archive />}{selected.archivedAt ? "Restaurer" : "Archiver"}</Button><Button variant="destructive" disabled={selectedBlockers.length > 0} onClick={() => setDeleteOpen(true)}><Trash2 />Supprimer</Button></SheetFooter></>}</SheetContent>
       </Sheet>
       <PromotionFormDialog open={formOpen} onOpenChange={setFormOpen} promotion={editing} />
       {selected && <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} title={`Supprimer ${selected.name} ?`} description="La suppression est refusée tant que des étudiants, cours ou sessions y sont liés." onDelete={() => deletePromotion(selected.id)} onDeleted={() => setSelectedId(undefined)} />}
@@ -688,6 +691,7 @@ function CourseFormDialog({ open, onOpenChange, course }: { open: boolean; onOpe
   const { state, createCourse, updateCourse, isPending } = useAdminData();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const teachers = state.users.filter((user) => user.role === "TEACHER" && user.status === "ACTIVE");
+  const activePromotions = state.promotions.filter((promotion) => !promotion.archivedAt || promotion.id === course?.promotionId);
   const saving = isPending(course ? `course:${course.id}:update` : "course:create");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -721,7 +725,7 @@ function CourseFormDialog({ open, onOpenChange, course }: { open: boolean; onOpe
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="course-name">Intitulé</Label><Input id="course-name" name="name" aria-invalid={Boolean(errors.name)} defaultValue={course?.name} placeholder="Développement web" /><FieldMessage message={errors.name} /></div>
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="course-description">Description</Label><Textarea id="course-description" name="description" aria-invalid={Boolean(errors.description)} defaultValue={course?.description} placeholder="Objectifs et contenu du cours" /><FieldMessage message={errors.description} /></div>
             <div className="space-y-2"><Label htmlFor="course-teacher">Enseignant</Label><Select name="teacherId" defaultValue={course?.teacherId}><SelectTrigger id="course-teacher" className="w-full" aria-invalid={Boolean(errors.teacherId)}><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{teachers.map((teacher) => <SelectItem key={teacher.id} value={teacher.id}>{teacher.name}</SelectItem>)}</SelectContent></Select><FieldMessage message={errors.teacherId} /></div>
-            <div className="space-y-2"><Label htmlFor="course-promotion">Promotion</Label><Select name="promotionId" defaultValue={course?.promotionId}><SelectTrigger id="course-promotion" className="w-full" aria-invalid={Boolean(errors.promotionId)}><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{state.promotions.map((promotion) => <SelectItem key={promotion.id} value={promotion.id}>{promotion.name}</SelectItem>)}</SelectContent></Select><FieldMessage message={errors.promotionId} /></div>
+            <div className="space-y-2"><Label htmlFor="course-promotion">Promotion</Label><Select name="promotionId" defaultValue={course?.promotionId}><SelectTrigger id="course-promotion" className="w-full" aria-invalid={Boolean(errors.promotionId)}><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{activePromotions.map((promotion) => <SelectItem key={promotion.id} value={promotion.id}>{promotion.name}{promotion.archivedAt ? " · archivée" : ""}</SelectItem>)}</SelectContent></Select><FieldMessage message={errors.promotionId} /></div>
           </div>
           <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Annuler</Button><Button type="submit" disabled={saving}>{saving ? "Enregistrement..." : course ? "Enregistrer" : "Ajouter"}</Button></DialogFooter>
         </form>

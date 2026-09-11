@@ -8,7 +8,7 @@ const globalForPrisma = globalThis as {
 
 const adapter = new PrismaPg({
   connectionString: databaseUrl(),
-  connectionTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 15_000,
   idleTimeoutMillis: 60_000,
   keepAlive: true,
   max: 5,
@@ -16,7 +16,10 @@ const adapter = new PrismaPg({
   statement_timeout: 30_000,
 });
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  adapter,
+  transactionOptions: { maxWait: 15_000, timeout: 30_000 },
+});
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

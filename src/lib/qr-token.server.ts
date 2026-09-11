@@ -23,14 +23,14 @@ function tokenForWindow(sessionId: string, window: number) {
   return sign(`qr:${sessionId}:${window}`).slice(0, 8).toUpperCase();
 }
 
-export function createServerQrToken(sessionId: string, now = Date.now()) {
-  const window = Math.floor(now / QR_ROTATION_MS);
-  const expiresAt = (window + 1) * QR_ROTATION_MS;
+export function createServerQrToken(sessionId: string, now = Date.now(), rotationMs = QR_ROTATION_MS) {
+  const window = Math.floor(now / rotationMs);
+  const expiresAt = (window + 1) * rotationMs;
   return { value: tokenForWindow(sessionId, window), expiresAt };
 }
 
-export function matchesServerQrToken(sessionId: string, token: string, now = Date.now()) {
-  const window = Math.floor(now / QR_ROTATION_MS);
+export function matchesServerQrToken(sessionId: string, token: string, now = Date.now(), rotationMs = QR_ROTATION_MS) {
+  const window = Math.floor(now / rotationMs);
   return [window, window - 1].some((candidate) =>
     secureEqual(tokenForWindow(sessionId, candidate), token.trim().toUpperCase()),
   );

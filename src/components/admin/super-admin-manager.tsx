@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Crown, KeyRound, LoaderCircle, Shield, ShieldCheck } from "lucide-react";
-import { updateAdminLevelAction } from "@/actions/super-admin.actions";
+import { Crown, KeyRound, LoaderCircle, Save, Shield, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { updateAdminLevelAction, updateAttendancePolicyAction } from "@/actions/super-admin.actions";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AdminLevel } from "@/types";
 import type { SystemAdminSummary, SystemAdministrationData } from "@/types/admin";
+import type { AttendancePolicy } from "@/types/admin";
 
 export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrationData; viewerId: string }) {
   const router = useRouter();
@@ -20,6 +21,9 @@ export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrati
   const [target, setTarget] = useState<{ admin: SystemAdminSummary; nextLevel: AdminLevel }>();
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<{ text: string; error: boolean }>();
+  const [policy, setPolicy] = useState<AttendancePolicy>(data.attendancePolicy);
+  const [policyPassword, setPolicyPassword] = useState("");
+  const [policyMessage, setPolicyMessage] = useState<{ text: string; error: boolean }>();
   const [pending, startTransition] = useTransition();
 
   function confirm() {
@@ -34,6 +38,23 @@ export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrati
       setPassword("");
       router.refresh();
     });
+  }
+
+  function savePolicy(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPolicyMessage(undefined);
+    startTransition(async () => {
+      const result = await updateAttendancePolicyAction(policy, policyPassword);
+      setPolicyMessage({ text: result.message, error: !result.ok });
+      if (!result.ok) return;
+      if (result.value) setPolicy(result.value);
+      setPolicyPassword("");
+      router.refresh();
+    });
+  }
+
+  function setPolicyValue(key: keyof AttendancePolicy, value: string) {
+    setPolicy((current) => ({ ...current, [key]: Number(value) }));
   }
 
   return (
@@ -54,6 +75,19 @@ export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrati
         </div>
       </section>
       <section className="mt-5 border bg-background p-5"><div className="flex gap-3"><KeyRound className="mt-0.5 size-5 text-primary" /><div><h2 className="font-semibold">Politique de photo</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Le pointage étudiant exigera une photo approuvée à partir du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short", timeZone: "Africa/Lubumbashi" }).format(new Date(data.profilePhotoEnforcementAt))}.</p></div></div></section>
+      <section className="mt-5 border bg-background">
+        <div className="flex gap-3 border-b p-5"><SlidersHorizontal className="mt-0.5 size-5 text-primary" /><div><h2 className="font-semibold">Règles de présence</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Ces valeurs s’appliquent à tous les nouveaux pointages et aux indicateurs de suivi.</p></div></div>
+        <form onSubmit={savePolicy} className="grid gap-5 p-5 sm:grid-cols-2 xl:grid-cols-3">
+          <PolicyField label="Seuil d’assiduité (%)" value={policy.attendanceAlertThreshold} min={50} max={100} onChange={(value) => setPolicyValue("attendanceAlertThreshold", value)} />
+          <PolicyField label="Tolérance de retard (min)" value={policy.defaultLateThresholdMinutes} min={0} max={60} onChange={(value) => setPolicyValue("defaultLateThresholdMinutes", value)} />
+          <PolicyField label="Démarrage anticipé (min)" value={policy.sessionStartEarlyMinutes} min={0} max={120} onChange={(value) => setPolicyValue("sessionStartEarlyMinutes", value)} />
+          <PolicyField label="Rotation du QR (s)" value={policy.qrRotationSeconds} min={10} max={60} onChange={(value) => setPolicyValue("qrRotationSeconds", value)} />
+          <PolicyField label="Délai de correction (jours)" value={policy.correctionWindowDays} min={1} max={180} onChange={(value) => setPolicyValue("correctionWindowDays", value)} />
+          <div className="space-y-2"><Label htmlFor="policy-password">Votre mot de passe</Label><Input id="policy-password" type="password" autoComplete="current-password" value={policyPassword} onChange={(event) => setPolicyPassword(event.target.value)} required /></div>
+          {policyMessage ? <Alert variant={policyMessage.error ? "destructive" : "default"} className="sm:col-span-2 xl:col-span-3"><AlertDescription>{policyMessage.text}</AlertDescription></Alert> : null}
+          <div className="sm:col-span-2 xl:col-span-3"><Button type="submit" disabled={pending || !policyPassword}><Save />{pending ? "Enregistrement..." : "Enregistrer les règles"}</Button></div>
+        </form>
+      </section>
       <Dialog open={Boolean(target)} onOpenChange={(open) => !pending && !open && setTarget(undefined)}>
         <DialogContent>
           <DialogHeader><DialogTitle>{target?.nextLevel === "SUPER" ? "Promouvoir ce compte ?" : "Rétrograder ce compte ?"}</DialogTitle><DialogDescription>Les sessions de {target?.admin.name} seront révoquées et le nouveau niveau prendra effet à la prochaine connexion.</DialogDescription></DialogHeader>
@@ -64,4 +98,9 @@ export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrati
       </Dialog>
     </div>
   );
+}
+
+function PolicyField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: string) => void }) {
+  const id = `policy-${label.toLocaleLowerCase("fr").replace(/[^a-z0-9]+/g, "-")}`;
+  return <div className="space-y-2"><Label htmlFor={id}>{label}</Label><Input id={id} type="number" min={min} max={max} value={value} onChange={(event) => onChange(event.target.value)} required /></div>;
 }

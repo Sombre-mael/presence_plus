@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { getTeacherAssiduity, getTeacherCourses, type AssiduityPeriod, type TeacherAssiduityRow } from "@/lib/teacher-assiduity";
 import { formatAcademicDay } from "@/lib/academic-calendar";
+import { attendancePolicyOf } from "@/lib/attendance-policy";
 
 const labels = { REGULAR: "Régulier", ATTENTION: "À suivre", NO_DATA: "Sans résultat" } as const;
 const colors = { REGULAR: "bg-emerald-50 text-emerald-800", ATTENTION: "bg-amber-50 text-amber-900", NO_DATA: "bg-muted text-muted-foreground" } as const;
@@ -28,6 +29,7 @@ export function StudentAssiduity() {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState("ALL");
   const reducedMotion = useReducedMotion();
+  const alertThreshold = attendancePolicyOf(state.attendancePolicy).attendanceAlertThreshold;
   const courses = useMemo(() => getTeacherCourses(state, viewerId), [state, viewerId]);
   const rows = useMemo(() => getTeacherAssiduity(state, viewerId, period), [state, viewerId, period]);
   const normalized = query.trim().toLocaleLowerCase("fr");
@@ -44,7 +46,7 @@ export function StudentAssiduity() {
         {[
           ["Étudiants", new Set(filtered.map((row) => row.student.id)).size, `${filtered.length} suivi(s) étudiant-cours`],
           ["Présence", eligible ? `${Math.round(100 * attended / eligible)} %` : "—", "Retards inclus · justifiées exclues"],
-          ["À suivre", filtered.filter((row) => row.level === "ATTENTION").length, "Suivis avec moins de 80 % de présence"],
+          ["À suivre", filtered.filter((row) => row.level === "ATTENTION").length, `Suivis avec moins de ${alertThreshold} % de présence`],
         ].map(([label, value, detail]) => <div key={label} className="min-w-0 bg-background p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="metric-number mt-2 text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>)}
       </section>
 
@@ -72,7 +74,7 @@ export function StudentAssiduity() {
           {!filtered.length && <div className="px-4 py-12 text-center"><Users className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">Aucun suivi dans cette vue</p><p className="mt-2 text-sm text-muted-foreground">{courses.length ? "Aucun étudiant ne correspond aux filtres sélectionnés." : "Aucun cours ou historique de séance ne vous est affecté."}</p>{courses.length > 0 && <Button className="mt-4" variant="outline" onClick={() => { setQuery(""); setCourseId("ALL"); setLevel("ALL"); setPeriod("ALL"); }}>Réinitialiser les filtres</Button>}</div>}
         </div>
       </section>
-      <p className="text-xs leading-5 text-muted-foreground">Présence = présents et retards / présents, retards et absents. Ponctualité = présents à l’heure / présences. Les séances annulées, en cours, les absences justifiées et les résultats manquants ne pénalisent pas le taux. « À suivre » est un repère à 80 %, pas une sanction.</p>
+      <p className="text-xs leading-5 text-muted-foreground">Présence = présents et retards / présents, retards et absents. Ponctualité = présents à l’heure / présences. Les séances annulées, en cours, les absences justifiées et les résultats manquants ne pénalisent pas le taux. « À suivre » utilise le seuil configuré de {alertThreshold} %, sans constituer une sanction.</p>
     </div>
   );
 }

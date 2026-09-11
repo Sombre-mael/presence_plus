@@ -6,15 +6,19 @@ import { prisma } from "@/lib/prisma";
 import { getSessionRoster } from "@/lib/academic-domain";
 import { addAcademicDays, currentAcademicDate } from "@/lib/academic-calendar";
 import { apiFailure, PRIVATE_RESPONSE_HEADERS } from "@/lib/api-response";
+import { getAdminAssiduityPage } from "@/lib/admin-attendance.server";
 
 const exportQuerySchema = z.object({
   sessionId: z.string().trim().min(1).max(120).optional(),
-  kind: z.enum(["attendances", "statistics"]).default("attendances"),
+  kind: z.enum(["attendances", "statistics", "assiduity"]).default("attendances"),
   status: z.enum(["ALL", "PENDING", "PRESENT", "LATE", "ABSENT", "EXCUSED"]).optional(),
   query: z.string().trim().max(120).default(""),
   period: z.enum(["7D", "30D", "180D"]).default("30D"),
   promotionId: z.string().trim().min(1).max(120).optional(),
   courseId: z.string().trim().min(1).max(120).optional(),
+  teacherId: z.string().trim().min(1).max(120).optional(),
+  attendancePeriod: z.enum(["30", "90", "180", "ALL"]).default("30"),
+  situation: z.enum(["ALL", "REGULAR", "ATTENTION", "NO_DATA", "MISSING"]).default("ALL"),
 });
 
 function csvCell(value: string) {
@@ -30,11 +34,22 @@ async function buildExport(request: NextRequest) {
       { status: 400, headers: PRIVATE_RESPONSE_HEADERS },
     );
   }
-  const { sessionId, kind, status, period, promotionId, courseId } = parsed.data;
+  const { sessionId, kind, status, period, promotionId, courseId, teacherId, attendancePeriod, situation } = parsed.data;
   const query = parsed.data.query.toLocaleLowerCase("fr");
 
   const viewer = await getBusinessViewer();
   if (!viewer) return Response.json({ error: "Authentification requise." }, { status: 401, headers: PRIVATE_RESPONSE_HEADERS });
+  if (kind === "assiduity") {
+    if (viewer.role !== "ADMIN") return Response.json({ error: "Acces administrateur requis." }, { status: 403, headers: PRIVATE_RESPONSE_HEADERS });
+    const data = await getAdminAssiduityPage({ query: parsed.data.query, promotionId, courseId, teacherId, period: attendancePeriod, situation, pageSize: 10_000 });
+    const rows = [
+      ["Matricule", "Etudiant", "Promotion", "Cours", "Enseignant", "Seances", "Presents", "Retards", "Absents", "Justifies", "A verifier", "Taux de presence", "Ponctualite", "Situation"],
+      ...data.items.map((row) => [row.matricule, row.studentName, row.promotionName, `${row.courseCode} - ${row.courseName}`, row.teacherName, row.sessionCount, row.present, row.late, row.absent, row.excused, row.missing, row.attendanceRate === null ? "" : `${row.attendanceRate}%`, row.punctualityRate === null ? "" : `${row.punctualityRate}%`, row.situation]),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map((value) => csvCell(String(value))).join(",")).join("\r\n")}`;
+    await prisma.auditLog.create({ data: { actorId: viewer.id, action: "EXPORT_ASSIDUITY", entityType: "Attendance", entityId: "filtered", metadata: { promotionId, courseId, teacherId, attendancePeriod, situation, rows: data.items.length } } });
+    return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="assiduite-presence.csv"', "Cache-Control": "no-store" } });
+  }
   const snapshot = await getAcademicSnapshot(viewer);
   if (sessionId && !snapshot.sessions.some((session) => session.id === sessionId)) {
     return Response.json({ error: "Session introuvable." }, { status: 404, headers: PRIVATE_RESPONSE_HEADERS });

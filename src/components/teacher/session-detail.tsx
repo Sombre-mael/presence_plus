@@ -12,6 +12,7 @@ import {
   MapPin,
   Play,
   QrCode,
+  Printer,
   UserCheck,
   Users,
   XCircle,
@@ -64,6 +65,7 @@ export function TeacherSessionDetail({ id }: { id: string }) {
           title="La séance est prête"
           description="Vérifiez les informations puis ouvrez le pointage au début du cours."
           actions={<>
+            <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/print`}><Printer /> Feuille de secours</Link></Button>
             <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/edit`}><Edit3 /> Modifier</Link></Button>
             <CancelDialog reason={reason} setReason={setReason} pending={isPending(`session:${id}:cancel`)} onConfirm={() => cancelSession(id, reason)} />
             <Dialog><DialogTrigger asChild><Button><Play /> Démarrer</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Ouvrir le pointage ?</DialogTitle><DialogDescription>Le QR code deviendra actif et les informations de la séance seront verrouillées.</DialogDescription></DialogHeader><DialogFooter><DialogClose asChild><Button variant="outline">Retour</Button></DialogClose><Button disabled={isPending(`session:${id}:start`)} onClick={start}>{isPending(`session:${id}:start`) ? "Démarrage..." : "Démarrer la session"}</Button></DialogFooter></DialogContent></Dialog>
@@ -76,6 +78,7 @@ export function TeacherSessionDetail({ id }: { id: string }) {
           title={activeExpired ? "Horaire terminé, clôture requise" : "Pointage en cours"}
           description={activeExpired ? `${pending} étudiant(s) sans pointage seront marqués absents à la clôture.` : `${pending} étudiant(s) n’ont pas encore pointé. La clôture les marquera absents.`}
           actions={<>
+            <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/print`}><Printer /> Feuille de secours</Link></Button>
             <Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/attendances`}><UserCheck /> Présences</Link></Button>
             {!activeExpired && <Button asChild><Link href={`/teacher/sessions/${id}/qr`}><QrCode /> QR code</Link></Button>}
             <CloseDialog count={pending} mutating={isPending(`session:${id}:complete`)} onConfirm={() => completeSession(id)} />
@@ -84,7 +87,7 @@ export function TeacherSessionDetail({ id }: { id: string }) {
       )}
 
       {session.status === "COMPLETED" && (
-        <ActionBand title="Séance clôturée" description="Les résultats sont archivés. Toute correction demandera un motif." actions={<Button asChild><Link href={`/teacher/sessions/${id}/attendances`}><UserCheck /> Consulter et corriger</Link></Button>} />
+        <ActionBand title="Séance clôturée" description="Les résultats sont archivés. Toute correction demandera un motif." actions={<><Button asChild variant="outline"><Link href={`/teacher/sessions/${id}/print`}><Printer /> Imprimer</Link></Button><Button asChild><Link href={`/teacher/sessions/${id}/attendances`}><UserCheck /> Consulter et corriger</Link></Button></>} />
       )}
 
       {session.status === "CANCELLED" && (

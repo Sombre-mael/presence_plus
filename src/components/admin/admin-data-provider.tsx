@@ -21,6 +21,7 @@ import {
   resolveCorrectionRequestAction,
   saveAttendanceAction,
   setCourseActiveAction,
+  setPromotionArchivedAction,
   setUserStatusAction,
   startSessionAction,
   updateCourseAction,
@@ -82,6 +83,7 @@ export interface AcademicDataContextValue {
   createPromotion: (input: AdminPromotionInput) => AsyncResult;
   updatePromotion: (id: string, input: AdminPromotionInput) => AsyncResult;
   deletePromotion: (id: string) => AsyncResult;
+  setPromotionArchived: (id: string, archived: boolean) => AsyncResult;
   createCourse: (input: AdminCourseInput) => AsyncResult;
   updateCourse: (id: string, input: AdminCourseInput) => AsyncResult;
   deleteCourse: (id: string) => AsyncResult;
@@ -276,6 +278,7 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
   const createPromotion = useCallback((input: AdminPromotionInput) => run(createPromotionAction(input), "promotion:create"), [run]);
   const updatePromotion = useCallback((id: string, input: AdminPromotionInput) => run(updatePromotionAction(id, input), `promotion:${id}:update`), [run]);
   const deletePromotion = useCallback((id: string) => run(deletePromotionAction(id), `promotion:${id}:delete`), [run]);
+  const setPromotionArchived = useCallback((id: string, archived: boolean) => run(setPromotionArchivedAction(id, archived), `promotion:${id}:archive`), [run]);
   const createCourse = useCallback((input: AdminCourseInput) => run(createCourseAction(input), "course:create"), [run]);
   const updateCourse = useCallback((id: string, input: AdminCourseInput) => run(updateCourseAction(id, input), `course:${id}:update`), [run]);
   const deleteCourse = useCallback((id: string) => run(deleteCourseAction(id), `course:${id}:delete`), [run]);
@@ -351,6 +354,7 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
     createPromotion,
     updatePromotion,
     deletePromotion,
+    setPromotionArchived,
     createCourse,
     updateCourse,
     deleteCourse,
@@ -370,7 +374,7 @@ export function AdminDataProvider({ children, initialState, viewerId, viewerAdmi
     notify,
     syncStatus,
     lastSyncedAt,
-  }), [state, viewerId, viewerAdminLevel, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, createPromotion, updatePromotion, deletePromotion, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
+  }), [state, viewerId, viewerAdminLevel, hydrated, pendingCount, pendingKeys, createUser, updateUser, deleteUser, setUserStatus, resendInvitation, sendPasswordReset, revokeUserSessions, createPromotion, updatePromotion, deletePromotion, setPromotionArchived, createCourse, updateCourse, deleteCourse, setCourseActive, createSession, updateSession, startSession, cancelSession, completeSession, saveAttendance, validateStudentCode, submitStudentCheckIn, createCorrectionRequest, cancelCorrectionRequest, resolveCorrectionRequest, reload, notify, syncStatus, lastSyncedAt]);
 
   return (
     <AcademicDataContext.Provider value={value}>

@@ -76,6 +76,21 @@ describe("règles métier administrateur", () => {
     expect(teacher.fieldErrors?.email).toBeDefined();
   });
 
+  it("refuse d’affecter un nouveau cours à une promotion archivée", () => {
+    const state = freshAdminData();
+    state.promotions[0].archivedAt = "2026-09-01T00:00:00.000Z";
+    const result = validateCourse(state, {
+      code: "NEW301",
+      name: "Nouveau cours",
+      teacherId: "u2",
+      promotionId: state.promotions[0].id,
+      weeklyHours: 2,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.fieldErrors?.promotionId).toBeDefined();
+  });
+
   it("aligne l’unicité des promotions sur la contrainte de base de données", () => {
     const result = validatePromotion(freshAdminData(), {
       name: "L2 Informatique",

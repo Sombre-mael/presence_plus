@@ -108,7 +108,7 @@ export function ProfileOverview({ profile }: { profile: AccountProfile }) {
         <section className="overflow-hidden border bg-background">
           <div className="border-b p-5 sm:px-6">
             <h2 className="font-semibold">Parcours académique</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Informations de scolarité associées à votre compte.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Informations académiques utilisées pour le suivi de vos présences.</p>
           </div>
           <dl className="grid sm:grid-cols-2">
             <ProfileDetail icon={Hash} label="Matricule" value={profile.matricule ?? "Non renseigné"} />

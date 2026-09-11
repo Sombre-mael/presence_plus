@@ -6,8 +6,9 @@ export function isWithinSessionStartWindow(
   scheduledStartAt: Date,
   scheduledEndAt: Date,
   now = new Date(),
+  earlyWindowMs = SESSION_START_EARLY_WINDOW_MS,
 ) {
-  return now >= new Date(scheduledStartAt.getTime() - SESSION_START_EARLY_WINDOW_MS)
+  return now >= new Date(scheduledStartAt.getTime() - earlyWindowMs)
     && now <= scheduledEndAt;
 }
 

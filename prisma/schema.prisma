@@ -71,10 +71,15 @@ model ProfilePhotoSubmission {
 }
 
 model SystemSetting {
-  id                        String   @id @default("default")
-  profilePhotoEnforcementAt DateTime
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
+  id                          String   @id @default("default")
+  profilePhotoEnforcementAt   DateTime
+  attendanceAlertThreshold    Int      @default(80)
+  defaultLateThresholdMinutes Int      @default(10)
+  sessionStartEarlyMinutes    Int      @default(30)
+  qrRotationSeconds           Int      @default(10)
+  correctionWindowDays        Int      @default(30)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 }
 
 model AuthToken {
@@ -202,11 +207,14 @@ model Promotion {
   description  String?
   department   String
   academicYear String
+  archivedAt   DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
   courses      Course[]
   users        User[]
+
+  @@index([archivedAt])
 }
 
 model Session {

@@ -11,12 +11,23 @@ import { getProfilePhotoEnforcementAt } from "@/lib/profile-photo.server";
 import type { AdminLevel } from "@/types";
 import type { SystemAdministrationData } from "@/types/admin";
 import type { AuthActionResult } from "@/types/auth";
+import { z } from "zod";
+import { getAttendancePolicy } from "@/lib/attendance-policy.server";
+import type { AttendancePolicy } from "@/types/admin";
+
+const attendancePolicySchema = z.object({
+  attendanceAlertThreshold: z.coerce.number().int().min(50).max(100),
+  defaultLateThresholdMinutes: z.coerce.number().int().min(0).max(60),
+  sessionStartEarlyMinutes: z.coerce.number().int().min(0).max(120),
+  qrRotationSeconds: z.coerce.number().int().min(10).max(60),
+  correctionWindowDays: z.coerce.number().int().min(1).max(180),
+});
 
 export async function getSystemAdministrationData(): Promise<SystemAdministrationData | null> {
   const viewer = await getViewerForRole("ADMIN");
   if (!isSuperAdmin(viewer)) return null;
   const now = new Date();
-  const [admins, enforcementAt] = await Promise.all([
+  const [admins, enforcementAt, attendancePolicy] = await Promise.all([
     prisma.user.findMany({
       where: { role: "ADMIN" },
       orderBy: [{ adminLevel: "desc" }, { name: "asc" }],
@@ -31,6 +42,7 @@ export async function getSystemAdministrationData(): Promise<SystemAdministratio
       },
     }),
     getProfilePhotoEnforcementAt(),
+    getAttendancePolicy(),
   ]);
   return {
     admins: admins.flatMap((admin) => admin.adminLevel ? [{
@@ -43,7 +55,42 @@ export async function getSystemAdministrationData(): Promise<SystemAdministratio
       lastLoginAt: admin.lastLoginAt?.toISOString(),
     }] : []),
     profilePhotoEnforcementAt: enforcementAt.toISOString(),
+    attendancePolicy,
   };
+}
+
+export async function updateAttendancePolicyAction(
+  input: AttendancePolicy,
+  currentPassword: string,
+): Promise<AuthActionResult<AttendancePolicy>> {
+  const viewer = await getViewerForRole("ADMIN");
+  if (!isSuperAdmin(viewer)) return { ok: false, message: "Accès super administrateur requis." };
+  if (!await verifyViewerPassword(viewer.id, currentPassword)) {
+    return { ok: false, message: "Le mot de passe actuel est incorrect.", fieldErrors: { currentPassword: "Vérifiez votre mot de passe." } };
+  }
+  const parsed = attendancePolicySchema.safeParse(input);
+  if (!parsed.success) {
+    const fieldErrors = Object.fromEntries(parsed.error.issues.map((issue) => [String(issue.path[0]), issue.message]));
+    return { ok: false, message: "Vérifiez les règles saisies.", fieldErrors };
+  }
+  const policy = parsed.data;
+  try {
+    await withSerializableRetry(() => prisma.$transaction(async (tx) => {
+      await tx.systemSetting.upsert({
+        where: { id: "default" },
+        create: { id: "default", profilePhotoEnforcementAt: new Date("2100-01-01T00:00:00.000Z"), ...policy },
+        update: policy,
+      });
+      await tx.auditLog.create({
+        data: { actorId: viewer.id, action: "UPDATE_ATTENDANCE_POLICY", entityType: "SystemSetting", entityId: "default", metadata: policy },
+      });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS));
+    revalidatePath("/admin/system");
+    revalidatePath("/admin", "layout");
+    return { ok: true, message: "Les règles de présence ont été mises à jour.", value: policy };
+  } catch {
+    return { ok: false, message: "Les règles de présence n’ont pas pu être enregistrées. Réessayez." };
+  }
 }
 
 export async function updateAdminLevelAction(

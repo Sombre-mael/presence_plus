@@ -19,4 +19,9 @@ describe("cycle de vie des sessions", () => {
     expect(shouldAutoCancelSession("COMPLETED", end, now)).toBe(false);
     expect(shouldAutoCancelSession("SCHEDULED", end, end)).toBe(false);
   });
+
+  it("respecte une fenêtre de démarrage configurée", () => {
+    expect(isWithinSessionStartWindow(start, end, new Date("2026-08-12T07:45:00.000Z"), 15 * 60_000)).toBe(true);
+    expect(isWithinSessionStartWindow(start, end, new Date("2026-08-12T07:44:59.999Z"), 15 * 60_000)).toBe(false);
+  });
 });

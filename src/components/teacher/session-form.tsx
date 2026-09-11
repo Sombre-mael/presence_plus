@@ -6,6 +6,7 @@ import { ArrowLeft, CalendarCheck, Clock3, MapPin } from "lucide-react";
 import type { TeacherSessionInput } from "@/types/admin";
 import { useAcademicData } from "@/components/admin/admin-data-provider";
 import { currentAcademicDate } from "@/lib/academic-calendar";
+import { attendancePolicyOf } from "@/lib/attendance-policy";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,7 @@ export function TeacherSessionForm({ sessionId }: { sessionId?: string }) {
     startTime: existing?.startTime ?? "08:00",
     endTime: existing?.endTime ?? "10:00",
     room: existing?.room ?? "",
-    lateThresholdMinutes: existing?.lateThresholdMinutes ?? 10,
+    lateThresholdMinutes: existing?.lateThresholdMinutes ?? attendancePolicyOf(state.attendancePolicy).defaultLateThresholdMinutes,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");

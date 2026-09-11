@@ -8,6 +8,7 @@ import type { AttendanceStatus } from "@/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { reconcileExpiredScheduledSessions } from "@/lib/session-maintenance";
 import { withDatabaseRetry } from "@/lib/database-retry";
+import { getAttendancePolicy } from "@/lib/attendance-policy.server";
 
 export const ACADEMIC_TIME_ZONE = "Africa/Lubumbashi";
 
@@ -108,7 +109,12 @@ export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<Ac
         select: { id: true, usedAt: true, expiresAt: true, deliveryStatus: true },
         take: 1,
       },
-      _count: { select: { authSessions: { where: { revokedAt: null, expiresAt: { gt: now } } } } },
+      _count: {
+        select: {
+          authSessions: { where: { revokedAt: null, expiresAt: { gt: now } } },
+          profilePhotoSubmissions: { where: { status: "APPROVED" } },
+        },
+      },
     },
   });
   return users.map((user) => ({
@@ -120,6 +126,7 @@ export async function getUsersForViewer(viewer: AuthenticatedViewer): Promise<Ac
     status: user.status,
     promotionId: user.promotionId ?? undefined,
     matricule: user.matricule ?? undefined,
+    profilePhotoStatus: user._count.profilePhotoSubmissions > 0 ? "APPROVED" : "MISSING",
     ...(viewer.role === "ADMIN" ? {
       activatedAt: user.activatedAt?.toISOString(),
       mustChangePassword: user.mustChangePassword,
@@ -144,6 +151,7 @@ export async function getPromotionsForViewer(viewer: AuthenticatedViewer): Promi
     department: promotion.department,
     academicYear: promotion.academicYear,
     description: promotion.description ?? undefined,
+    archivedAt: promotion.archivedAt?.toISOString(),
     createdAt: promotion.createdAt.toISOString(),
     updatedAt: promotion.updatedAt.toISOString(),
   }));
@@ -277,10 +285,15 @@ export async function countAttendancesForViewer(viewer: AuthenticatedViewer, whe
   return prisma.attendance.count({ where: combineWhere(scopes(viewer).attendances, where) });
 }
 
-export async function getCorrectionsForViewer(viewer: AuthenticatedViewer): Promise<AcademicDataState["correctionRequests"]> {
+export async function getCorrectionsForViewer(
+  viewer: AuthenticatedViewer,
+  options: RepositoryPageOptions<Prisma.AttendanceCorrectionRequestWhereInput> = {},
+): Promise<AcademicDataState["correctionRequests"]> {
   const requests = await prisma.attendanceCorrectionRequest.findMany({
-    where: scopes(viewer).corrections,
+    where: combineWhere(scopes(viewer).corrections, options.where),
     orderBy: { createdAt: "asc" },
+    skip: options.skip,
+    take: options.take,
     include: { resolvedBy: { select: { name: true } } },
   });
   return requests.map((request) => ({
@@ -329,31 +342,36 @@ export type AcademicCollection = keyof AcademicPatch;
 export async function getAcademicPatch(viewer: AuthenticatedViewer, keys: AcademicCollection[]): Promise<AcademicPatch> {
   return withDatabaseRetry(async () => {
     if (keys.includes("sessions")) await reconcileExpiredScheduledSessions();
+    const operationalStart = viewer.role === "ADMIN" ? new Date(Date.now() - 180 * 86_400_000) : undefined;
+    const sessionWhere: Prisma.SessionWhereInput | undefined = operationalStart ? { OR: [{ status: { in: ["SCHEDULED", "ACTIVE"] } }, { scheduledStartAt: { gte: operationalStart } }] } : undefined;
     const entries = await Promise.all(keys.map(async (key) => {
       if (key === "users") return [key, await getUsersForViewer(viewer)] as const;
       if (key === "promotions") return [key, await getPromotionsForViewer(viewer)] as const;
       if (key === "courses") return [key, await getCoursesForViewer(viewer)] as const;
-      if (key === "sessions") return [key, await getSessionsForViewer(viewer)] as const;
-      if (key === "attendances") return [key, await getAttendancesForViewer(viewer)] as const;
-      if (key === "correctionRequests") return [key, await getCorrectionsForViewer(viewer)] as const;
+      if (key === "sessions") return [key, await getSessionsForViewer(viewer, { where: sessionWhere })] as const;
+      if (key === "attendances") return [key, await getAttendancesForViewer(viewer, { where: sessionWhere ? { session: sessionWhere } : undefined })] as const;
+      if (key === "correctionRequests") return [key, await getCorrectionsForViewer(viewer, { where: operationalStart ? { OR: [{ status: "PENDING" }, { createdAt: { gte: operationalStart } }] } : undefined })] as const;
       return [key, await getAuditLogsForViewer(viewer)] as const;
     }));
     return Object.fromEntries(entries) as AcademicPatch;
   });
 }
 
-export async function getAcademicSnapshot(viewer: AuthenticatedViewer): Promise<AcademicDataState> {
+export async function getAcademicSnapshot(viewer: AuthenticatedViewer, options: { operationalWindowDays?: number } = {}): Promise<AcademicDataState> {
   return withDatabaseRetry(async () => {
     await reconcileExpiredScheduledSessions();
-    const [users, promotions, courses, sessions, attendances, correctionRequests, auditLogs] = await Promise.all([
+    const operationalStart = options.operationalWindowDays ? new Date(Date.now() - options.operationalWindowDays * 86_400_000) : undefined;
+    const sessionWhere: Prisma.SessionWhereInput | undefined = operationalStart ? { OR: [{ status: { in: ["SCHEDULED", "ACTIVE"] } }, { scheduledStartAt: { gte: operationalStart } }] } : undefined;
+    const [users, promotions, courses, sessions, attendances, correctionRequests, auditLogs, attendancePolicy] = await Promise.all([
       getUsersForViewer(viewer),
       getPromotionsForViewer(viewer),
       getCoursesForViewer(viewer),
-      getSessionsForViewer(viewer),
-      getAttendancesForViewer(viewer),
-      getCorrectionsForViewer(viewer),
+      getSessionsForViewer(viewer, { where: sessionWhere }),
+      getAttendancesForViewer(viewer, { where: sessionWhere ? { session: sessionWhere } : undefined }),
+      getCorrectionsForViewer(viewer, { where: operationalStart ? { OR: [{ status: "PENDING" }, { createdAt: { gte: operationalStart } }] } : undefined }),
       getAuditLogsForViewer(viewer),
+      getAttendancePolicy(),
     ]);
-    return { version: 3, users, promotions, courses, sessions, attendances, correctionRequests, auditLogs };
+    return { version: 3, users, promotions, courses, sessions, attendances, correctionRequests, auditLogs, attendancePolicy };
   });
 }

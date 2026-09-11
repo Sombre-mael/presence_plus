@@ -10,6 +10,7 @@ import type {
 } from "@/types/admin";
 import { academicDateTimeKey, academicMonth, currentAcademicDate, currentAcademicDateTimeKey } from "./academic-calendar";
 import { QR_ROTATION_MS } from "./qr-constants";
+import { attendancePolicyOf } from "./attendance-policy";
 
 const sessionSchema = z.object({
   name: z.string().trim().max(120, "Maximum 120 caractères.").optional(),
@@ -228,6 +229,7 @@ export function getTeacherNotifications(
   state: AcademicDataState,
   teacherId: string,
 ): AdminAnomaly[] {
+  const alertThreshold = attendancePolicyOf(state.attendancePolicy).attendanceAlertThreshold;
   const teacherSessions = state.sessions.filter(
     (session) =>
       (session.teacherId ??
@@ -245,7 +247,7 @@ export function getTeacherNotifications(
       const expired = academicDateTimeKey(session.date, session.endTime) <= nowKey;
       notifications.push({
         id: `active-${session.id}`,
-        severity: expired || rate < 80 ? "HIGH" : "MEDIUM",
+        severity: expired || rate < alertThreshold ? "HIGH" : "MEDIUM",
         title: expired ? "Clôture requise" : "Session en cours",
         detail: expired ? `${session.courseCode} a dépassé son heure de fin.` : `${session.courseCode} compte ${session.presentCount}/${session.expectedCount} pointages.`,
         href: `/teacher/sessions/${session.id}`,

@@ -9,6 +9,7 @@ import type {
 import { createQrToken, deriveAttendanceStatus } from "./academic-domain";
 import { academicDateTimeKey, currentAcademicDate, currentAcademicDateTimeKey } from "./academic-calendar";
 import { QR_ROTATION_MS } from "./qr-constants";
+import { attendancePolicyOf } from "./attendance-policy";
 
 function sessionTeacherId(state: AcademicDataState, courseId: string) {
   return state.courses.find((course) => course.id === courseId)?.teacherId;
@@ -296,11 +297,12 @@ export function getStudentNotifications(
     }
   }
   const stats = getStudentStats(state, studentId);
-  if (stats.completedCount && stats.attendanceRate < 80) {
+  const alertThreshold = attendancePolicyOf(state.attendancePolicy).attendanceAlertThreshold;
+  if (stats.completedCount && stats.attendanceRate < alertThreshold) {
     notifications.push({
       id: "attendance-alert",
       severity: "HIGH",
-      title: "Présence sous 80 %",
+      title: `Présence sous ${alertThreshold} %`,
       detail: `Votre taux actuel est de ${stats.attendanceRate} %.`,
       href: "/student/history",
     });

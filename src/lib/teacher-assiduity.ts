@@ -1,6 +1,7 @@
 import type { AttendanceRecord, SessionSummary } from "@/types";
 import type { AcademicDataState } from "@/types/admin";
 import { addAcademicDays, currentAcademicDate } from "@/lib/academic-calendar";
+import { attendancePolicyOf } from "@/lib/attendance-policy";
 
 export type AssiduityPeriod = "ALL" | "30" | "90" | "180";
 export type AssiduityLevel = "REGULAR" | "ATTENTION" | "NO_DATA";
@@ -23,6 +24,7 @@ export function getTeacherAssiduity(
   period: AssiduityPeriod = "ALL",
   today = currentAcademicDate(),
 ) {
+  const alertThreshold = attendancePolicyOf(state.attendancePolicy).attendanceAlertThreshold;
   const start = period === "ALL" ? "" : addAcademicDays(today, 1 - Number(period));
   const courses = getTeacherCourses(state, teacherId);
   const records = new Map(state.attendances.map((item) => [`${item.sessionId}:${item.studentId}`, item]));
@@ -43,7 +45,7 @@ export function getTeacherAssiduity(
       const eligible = attended + counts.ABSENT;
       const attendanceRate = eligible ? Math.round(100 * attended / eligible) : null;
       const punctualityRate = attended ? Math.round(100 * counts.PRESENT / attended) : null;
-      const level: AssiduityLevel = !eligible ? "NO_DATA" : attended / eligible < 0.8 ? "ATTENTION" : "REGULAR";
+      const level: AssiduityLevel = !eligible ? "NO_DATA" : attendanceRate! < alertThreshold ? "ATTENTION" : "REGULAR";
       return [{ key: `${course.id}:${student.id}`, student, course, currentEnrollment, history, counts, attended, eligible, attendanceRate, punctualityRate, level }];
     });
   });
