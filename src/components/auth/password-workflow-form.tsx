@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { NewPasswordInput, PasswordInput } from "@/components/auth/password-fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 
 type Workflow = "activate" | "reset" | "change";
 
@@ -62,9 +63,11 @@ export function PasswordWorkflowForm({ workflow, token, tokenValid = Boolean(tok
     const confirmation = String(formData.get("confirmation") ?? "");
     const identifier = String(formData.get("identifier") ?? "");
     const manualCode = String(formData.get("manualCode") ?? "");
+    const termsAccepted = formData.get("termsAccepted") === "on";
+    const privacyAcknowledged = formData.get("privacyAcknowledged") === "on";
     startTransition(async () => {
       const response = workflow === "activate"
-        ? await activateAccountAction(tokenValid ? token ?? "" : "", password, confirmation, identifier, manualCode)
+        ? await activateAccountAction(tokenValid ? token ?? "" : "", password, confirmation, identifier, manualCode, termsAccepted, privacyAcknowledged)
         : workflow === "reset"
           ? await resetPasswordAction(tokenValid ? token ?? "" : "", password, confirmation, identifier, manualCode)
           : await changeOwnPasswordAction(currentPassword, password, confirmation);
@@ -146,6 +149,21 @@ export function PasswordWorkflowForm({ workflow, token, tokenValid = Boolean(tok
       ) : null}
       <NewPasswordInput error={result?.fieldErrors?.password} disabled={pending} />
       <PasswordInput id="confirmation" name="confirmation" label="Confirmer le nouveau mot de passe" autoComplete="new-password" error={result?.fieldErrors?.confirmation} disabled={pending} />
+      {workflow === "activate" ? (
+        <fieldset className="space-y-3 border-t pt-4">
+          <legend className="sr-only">Documents juridiques</legend>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-5">
+            <input name="termsAccepted" type="checkbox" className="mt-1 size-4 shrink-0 accent-primary" aria-invalid={Boolean(result?.fieldErrors?.termsAccepted)} aria-describedby={result?.fieldErrors?.termsAccepted ? "terms-accepted-error" : undefined} disabled={pending} />
+            <span>J’accepte les <Link href="/legal/terms" target="_blank" className="font-medium text-primary underline underline-offset-4">conditions d’utilisation</Link>.</span>
+          </label>
+          {result?.fieldErrors?.termsAccepted ? <p id="terms-accepted-error" className="text-xs text-destructive">{result.fieldErrors.termsAccepted}</p> : null}
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-5">
+            <input name="privacyAcknowledged" type="checkbox" className="mt-1 size-4 shrink-0 accent-primary" aria-invalid={Boolean(result?.fieldErrors?.privacyAcknowledged)} aria-describedby={result?.fieldErrors?.privacyAcknowledged ? "privacy-acknowledged-error" : undefined} disabled={pending} />
+            <span>Je confirme avoir lu la <Link href="/legal/privacy" target="_blank" className="font-medium text-primary underline underline-offset-4">politique de confidentialité</Link>.</span>
+          </label>
+          {result?.fieldErrors?.privacyAcknowledged ? <p id="privacy-acknowledged-error" className="text-xs text-destructive">{result.fieldErrors.privacyAcknowledged}</p> : null}
+        </fieldset>
+      ) : null}
       <Button type="submit" className="h-11 w-full" disabled={pending}>{pending ? <><LoaderCircle className="animate-spin" />Enregistrement...</> : workflow === "activate" ? "Activer mon compte" : "Enregistrer le mot de passe"}</Button>
         </>
       )}

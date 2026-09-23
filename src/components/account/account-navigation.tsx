@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BellRing, KeyRound, UserRound } from "lucide-react";
+import { BellRing, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const items = [
   { href: "/account/profile", label: "Profil", icon: UserRound },
   { href: "/account/security", label: "Sécurité", icon: KeyRound },
   { href: "/account/notifications", label: "Notifications", icon: BellRing },
+  { href: "/account/privacy", label: "Confidentialité", icon: ShieldCheck },
 ];
 
 export function AccountNavigation() {
@@ -18,7 +19,7 @@ export function AccountNavigation() {
 
   return (
     <nav aria-label="Navigation du compte" className="mb-6 border-b pb-4">
-      <div className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
+      <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1 sm:grid-cols-4">
         {items.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;

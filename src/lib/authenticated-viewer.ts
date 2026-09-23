@@ -7,6 +7,7 @@ import { validateAuthSession } from "@/lib/auth-session.server";
 import { withDatabaseRetry } from "@/lib/database-retry";
 import { buildAccountPhotoState } from "@/lib/profile-photo-domain";
 import { getProfilePhotoEnforcementAt } from "@/lib/profile-photo.server";
+import { PRIVACY_VERSION, TERMS_VERSION, hasCurrentLegalAcceptance } from "@/lib/legal-policy";
 import type { Role, UserSummary } from "@/types";
 
 export type AuthenticatedViewer = UserSummary & {
@@ -14,6 +15,7 @@ export type AuthenticatedViewer = UserSummary & {
   sessionVersion: number;
   mustChangePassword: boolean;
   authSessionId: string;
+  legalAcceptanceRequired: boolean;
 };
 
 export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | null> {
@@ -42,6 +44,15 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
         select: { id: true, status: true, submittedAt: true, reviewedAt: true, reviewReason: true },
         take: 4,
       },
+      legalAcceptances: {
+        where: {
+          OR: [
+            { documentType: "TERMS", version: TERMS_VERSION },
+            { documentType: "PRIVACY_NOTICE", version: PRIVACY_VERSION },
+          ],
+        },
+        select: { documentType: true, version: true },
+      },
     },
   }), validateAuthSession(session.user.authSessionId, session.user.id), getProfilePhotoEnforcementAt()]));
   if (!validAuthSession || !user || user.status !== "ACTIVE" || !user.activatedAt || user.sessionVersion !== session.user.sessionVersion) return null;
@@ -55,6 +66,7 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
     reviewReason: rejected?.reviewReason ?? undefined,
     enforcementAt,
   });
+  const legalAcceptance = hasCurrentLegalAcceptance(user.legalAcceptances);
   return {
     id: user.id,
     name: user.name,
@@ -70,6 +82,7 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
     sessionVersion: user.sessionVersion,
     mustChangePassword: user.mustChangePassword,
     authSessionId: session.user.authSessionId,
+    legalAcceptanceRequired: !legalAcceptance.complete,
     profilePhotoStatus: photo.status,
     profilePhotoEnforcementAt: photo.enforcementAt,
     profilePhotoRequired: photo.requiredNow,
@@ -78,10 +91,10 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
 
 export async function getViewerForRole(role: Role) {
   const viewer = await getAuthenticatedViewer();
-  return viewer?.role === role && !viewer.mustChangePassword ? viewer : null;
+  return viewer?.role === role && !viewer.mustChangePassword && !viewer.legalAcceptanceRequired ? viewer : null;
 }
 
 export async function getBusinessViewer() {
   const viewer = await getAuthenticatedViewer();
-  return viewer && !viewer.mustChangePassword ? viewer : null;
+  return viewer && !viewer.mustChangePassword && !viewer.legalAcceptanceRequired ? viewer : null;
 }

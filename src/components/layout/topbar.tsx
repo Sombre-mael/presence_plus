@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTransition } from "react";
-import { BellRing, ChevronDown, KeyRound, LogOut, RotateCcw, UserRound } from "lucide-react";
+import { BellRing, ChevronDown, KeyRound, LogOut, RotateCcw, ShieldCheck, UserRound } from "lucide-react";
 import type { Role, UserSummary } from "@/types";
 import type { AdminAnomaly } from "@/types/admin";
 import { ProfileAvatar } from "@/components/account/profile-avatar";
@@ -46,6 +46,8 @@ const labels: Record<string, string> = {
   profile: "Mon profil",
   security: "Sécurité du compte",
   notifications: "Notifications",
+  privacy: "Confidentialité",
+  "privacy-requests": "Demandes relatives aux données",
   "photo-reviews": "Vérification des photos",
   system: "Administration système",
 };
@@ -134,6 +136,9 @@ export function Topbar({
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/account/notifications"><BellRing />Notifications</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/account/privacy"><ShieldCheck />Confidentialité et mes données</Link>
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={leaving}

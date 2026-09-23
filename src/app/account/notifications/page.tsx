@@ -12,6 +12,7 @@ export default async function AccountNotificationsPage() {
   const viewer = await getAuthenticatedViewer();
   if (!viewer) redirect("/login?callbackUrl=/account/notifications");
   if (viewer.mustChangePassword) redirect("/change-password");
+  if (viewer.legalAcceptanceRequired) redirect("/legal/acceptance");
   const [initialData, initialPreferences] = await Promise.all([
     listNotificationsForUser(viewer.id),
     getNotificationPreferences(viewer.id),

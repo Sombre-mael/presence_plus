@@ -70,6 +70,13 @@ const actionLabels: Record<string, string> = {
   REMOVE_PROFILE_PHOTO: "Photo de profil retirée",
   PROMOTE_SUPER_ADMIN: "Promotion en super administrateur",
   DEMOTE_SUPER_ADMIN: "Rétrogradation en administrateur standard",
+  ACCEPT_LEGAL_DOCUMENTS: "Documents juridiques acceptés",
+  CREATE_DATA_SUBJECT_REQUEST: "Demande relative aux données créée",
+  CANCEL_DATA_SUBJECT_REQUEST: "Demande relative aux données annulée",
+  PROCESS_DATA_SUBJECT_REQUEST: "Demande relative aux données traitée",
+  EXPORT_PERSONAL_DATA: "Export personnel téléchargé",
+  UPDATE_PRIVACY_SETTINGS: "Paramètres de confidentialité modifiés",
+  APPLY_PRIVACY_RETENTION: "Règles de conservation appliquées",
 };
 
 const entityLabels: Record<string, string> = {
@@ -83,6 +90,9 @@ const entityLabels: Record<string, string> = {
   AuthToken: "Jeton d’accès",
   AuthThrottle: "Protection anti-abus",
   ProfilePhotoSubmission: "Vérification de photo",
+  LegalAcceptance: "Acceptation juridique",
+  DataSubjectRequest: "Demande relative aux données",
+  SystemSetting: "Paramètres système",
 };
 
 export function AuditManager() {

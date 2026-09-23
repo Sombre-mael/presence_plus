@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import type { AdminLevel } from "@/types";
 import type { SystemAdminSummary, SystemAdministrationData } from "@/types/admin";
 import type { AttendancePolicy } from "@/types/admin";
+import { PrivacySystemSettings } from "@/components/admin/privacy-system-settings";
 
 export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrationData; viewerId: string }) {
   const router = useRouter();
@@ -88,6 +89,7 @@ export function SuperAdminManager({ data, viewerId }: { data: SystemAdministrati
           <div className="sm:col-span-2 xl:col-span-3"><Button type="submit" disabled={pending || !policyPassword}><Save />{pending ? "Enregistrement..." : "Enregistrer les règles"}</Button></div>
         </form>
       </section>
+      <PrivacySystemSettings initialSettings={data.privacySettings} />
       <Dialog open={Boolean(target)} onOpenChange={(open) => !pending && !open && setTarget(undefined)}>
         <DialogContent>
           <DialogHeader><DialogTitle>{target?.nextLevel === "SUPER" ? "Promouvoir ce compte ?" : "Rétrograder ce compte ?"}</DialogTitle><DialogDescription>Les sessions de {target?.admin.name} seront révoquées et le nouveau niveau prendra effet à la prochaine connexion.</DialogDescription></DialogHeader>

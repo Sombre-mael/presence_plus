@@ -58,7 +58,7 @@ export async function reviewProfilePhotoAction(
       });
       if (!submission || submission.status !== "PENDING") throw new Error("PHOTO_ALREADY_REVIEWED");
 
-      let replacedUrl: string | undefined;
+      let removedUrl: string | undefined;
       if (decision === "APPROVE") {
         const previousApproved = await tx.profilePhotoSubmission.findFirst({
           where: { userId: submission.userId, status: "APPROVED" },
@@ -69,13 +69,14 @@ export async function reviewProfilePhotoAction(
             where: { id: previousApproved.id },
             data: { status: "REPLACED" },
           });
-          replacedUrl = previousApproved.blobUrl;
+          removedUrl = previousApproved.blobUrl;
         }
         await tx.profilePhotoSubmission.update({
           where: { id: submission.id },
           data: { status: "APPROVED", reviewedAt: new Date(), reviewedById: viewer.id, reviewReason: null },
         });
       } else {
+        removedUrl = submission.blobUrl;
         await tx.profilePhotoSubmission.update({
           where: { id: submission.id },
           data: { status: "REJECTED", reviewedAt: new Date(), reviewedById: viewer.id, reviewReason: normalizedReason },
@@ -100,10 +101,10 @@ export async function reviewProfilePhotoAction(
         href: "/account/profile",
         dedupeKey: `profile-photo-reviewed:${submission.id}`,
       });
-      return { replacedUrl, notificationIds };
+      return { removedUrl, notificationIds };
     }, SERIALIZABLE_TRANSACTION_OPTIONS));
 
-    if (result.replacedUrl) await deleteProfileAvatar(result.replacedUrl).catch(() => undefined);
+    if (result.removedUrl) await deleteProfileAvatar(result.removedUrl).catch(() => undefined);
     await deliverNotificationPush(result.notificationIds).catch(() => undefined);
     revalidatePath("/admin/photo-reviews");
     revalidatePath("/account/profile");

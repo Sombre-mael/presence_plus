@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { E2E_DATABASE_MARKER, getE2EEnvironment } from "./environment";
+import { PRIVACY_VERSION, TERMS_VERSION } from "../src/lib/legal-policy";
 
 type Queryable = Pick<Pool | PoolClient, "query">;
 const DEMO_PROFILE_SNAPSHOT = ".e2e-demo-profiles.json";
@@ -146,6 +147,20 @@ export async function prepareFixedAuthProfiles(database: Queryable) {
     `UPDATE "User" SET "passwordHash" = $1, "activatedAt" = CURRENT_TIMESTAMP, "mustChangePassword" = false, "passwordChangedAt" = CURRENT_TIMESTAMP, "sessionVersion" = "sessionVersion" + 1 WHERE id = ANY($2::text[])`,
     [passwordHash, ["u1", "u2", "u4"]],
   );
+  await database.query(
+    `INSERT INTO "LegalAcceptance" (id, "userId", "documentType", version, "acceptedAt", "ipHash")
+     SELECT 'e2e-legal-terms-' || id, id, 'TERMS', $1, CURRENT_TIMESTAMP, repeat('0', 64)
+     FROM "User" WHERE id = ANY($2::text[])
+     ON CONFLICT ("userId", "documentType", version) DO NOTHING`,
+    [TERMS_VERSION, ["u1", "u2", "u4"]],
+  );
+  await database.query(
+    `INSERT INTO "LegalAcceptance" (id, "userId", "documentType", version, "acceptedAt", "ipHash")
+     SELECT 'e2e-legal-privacy-' || id, id, 'PRIVACY_NOTICE', $1, CURRENT_TIMESTAMP, repeat('0', 64)
+     FROM "User" WHERE id = ANY($2::text[])
+     ON CONFLICT ("userId", "documentType", version) DO NOTHING`,
+    [PRIVACY_VERSION, ["u1", "u2", "u4"]],
+  );
 }
 
 export async function restoreFixedAuthProfiles(database: Queryable) {
@@ -155,9 +170,10 @@ export async function restoreFixedAuthProfiles(database: Queryable) {
   await database.query(`DELETE FROM "AuthSession" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
   await database.query(`DELETE FROM "AuthThrottle" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
   await database.query(`DELETE FROM "AuthToken" WHERE "createdAt" >= $1`, [snapshot.startedAt]);
+  await database.query(`DELETE FROM "LegalAcceptance" WHERE "acceptedAt" >= $1 AND id LIKE 'e2e-legal-%'`, [snapshot.startedAt]);
   await database.query(
     `DELETE FROM "AuditLog" WHERE "createdAt" >= $1 AND action = ANY($2::text[])`,
-    [snapshot.startedAt, ["LOGIN_SUCCESS", "LOGOUT", "REQUEST_PASSWORD_RESET", "ACTIVATE_ACCOUNT", "RESET_PASSWORD", "CHANGE_PASSWORD", "REVOKE_SESSION", "REVOKE_OTHER_SESSIONS", "RESEND_INVITATION", "SEND_PASSWORD_RESET", "REVOKE_USER_SESSIONS", "AUTH_THROTTLE_BLOCK", "AUTH_EMAIL_NOT_APPLICABLE", "AUTH_EMAIL_SIMULATED", "AUTH_EMAIL_ACCEPTED", "AUTH_EMAIL_FAILED"]],
+    [snapshot.startedAt, ["LOGIN_SUCCESS", "LOGOUT", "REQUEST_PASSWORD_RESET", "ACTIVATE_ACCOUNT", "RESET_PASSWORD", "CHANGE_PASSWORD", "REVOKE_SESSION", "REVOKE_OTHER_SESSIONS", "RESEND_INVITATION", "SEND_PASSWORD_RESET", "REVOKE_USER_SESSIONS", "AUTH_THROTTLE_BLOCK", "AUTH_EMAIL_NOT_APPLICABLE", "AUTH_EMAIL_SIMULATED", "AUTH_EMAIL_ACCEPTED", "AUTH_EMAIL_FAILED", "ACCEPT_LEGAL_DOCUMENTS"]],
   );
   for (const user of snapshot.profiles) {
     await database.query(

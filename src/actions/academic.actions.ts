@@ -294,6 +294,7 @@ export async function createUserAction(input: AdminUserInput): Promise<AcademicA
           role: input.role,
           adminLevel: input.role === "ADMIN" ? "STANDARD" : null,
           status: input.status,
+          dataRetentionStartedAt: input.status === "INACTIVE" ? new Date() : null,
           activatedAt: null,
           mustChangePassword: true,
           matricule,
@@ -374,6 +375,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
       }
       const emailChanged = persisted.email.toLocaleLowerCase("fr") !== email.toLocaleLowerCase("fr");
       const securityChanged = persisted.role !== input.role || persisted.status !== input.status || emailChanged;
+      const now = new Date();
       await tx.user.update({
         where: { id },
         data: {
@@ -382,6 +384,7 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
           role: input.role,
           adminLevel: input.role === "ADMIN" ? persisted.adminLevel ?? "STANDARD" : null,
           status: input.status,
+          ...(persisted.status !== input.status ? { dataRetentionStartedAt: input.status === "INACTIVE" ? now : null } : {}),
           ...(emailChanged ? { activatedAt: null, mustChangePassword: true } : {}),
           ...(securityChanged ? { sessionVersion: { increment: 1 } } : {}),
           matricule: input.role === "STUDENT" ? input.matricule?.trim().toUpperCase() : null,
@@ -391,7 +394,6 @@ export async function updateUserAction(id: string, input: AdminUserInput): Promi
         },
       });
       if (securityChanged) {
-        const now = new Date();
         await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: now } });
         await revokeAuthSessions(tx, id, "ACCOUNT_SECURITY_CHANGED", undefined, now);
       }
@@ -470,7 +472,14 @@ export async function setUserStatusAction(id: string, status: "ACTIVE" | "INACTI
       const blocker = await userStatusBlocker(tx, id, status, viewer.id);
       if (blocker) throw Object.assign(new Error(blocker), { code: "BUSINESS_RULE" });
       const now = new Date();
-      await tx.user.update({ where: { id }, data: { status, sessionVersion: { increment: 1 } } });
+      await tx.user.update({
+        where: { id },
+        data: {
+          status,
+          dataRetentionStartedAt: status === "INACTIVE" ? now : null,
+          sessionVersion: { increment: 1 },
+        },
+      });
       await revokeAuthSessions(tx, id, "ACCOUNT_STATUS_CHANGED", undefined, now);
       if (status === "INACTIVE") {
         await tx.authToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: now } });

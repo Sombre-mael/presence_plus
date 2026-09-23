@@ -58,6 +58,32 @@ test("l’activation manuelle reste utilisable sur les écrans principaux", asyn
   }
 });
 
+test("les documents juridiques publics restent lisibles sur mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  for (const route of ["/legal/privacy", "/legal/terms", "/legal/cookies"]) {
+    await page.goto(route);
+    await expect(page.locator("h1")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  }
+});
+
+test("un compte existant accepte séparément les documents juridiques", async ({ page }) => {
+  const user = await createAuthUserFixture({ legalAccepted: false });
+  try {
+    await page.goto("/login");
+    await page.getByLabel("E-mail ou matricule").fill(user.email);
+    await page.getByLabel("Mot de passe", { exact: true }).fill(user.password);
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/legal\/acceptance/);
+    await page.getByLabel(/J’accepte les conditions/).check();
+    await page.getByLabel(/Je confirme avoir lu/).check();
+    await page.getByRole("button", { name: "Accepter et continuer" }).click();
+    await expect(page).toHaveURL(/\/admin\/dashboard/, { timeout: 60_000 });
+  } finally {
+    await cleanupAuthUserFixture(user.id);
+  }
+});
+
 test("les trois rôles se connectent et restent dans leur périmètre", async ({ page }) => {
   await loginAs(page, "Aline Kabeya");
   await expect(page).toHaveURL(/\/admin\/dashboard/);
@@ -143,6 +169,8 @@ test("une invitation est à usage unique et active le compte", async ({ page }) 
     await page.goto(`/activate-account?token=${encodeURIComponent(token)}`);
     await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);
     await page.getByLabel("Confirmer le nouveau mot de passe", { exact: true }).fill(password);
+    await page.getByLabel(/J’accepte les conditions/).check();
+    await page.getByLabel(/Je confirme avoir lu/).check();
     await page.getByRole("button", { name: "Activer mon compte" }).click();
     await expect(page).toHaveURL(/\/admin\/dashboard/, { timeout: 60_000 });
     await page.goto(`/activate-account?token=${encodeURIComponent(token)}`);
@@ -176,6 +204,8 @@ test("un étudiant active son compte avec son e-mail et un code", async ({ page 
     await expect(page.getByText(/Code vérifié pour/)).toBeVisible({ timeout: 60_000 });
     await page.getByLabel("Nouveau mot de passe", { exact: true }).fill(password);
     await page.getByLabel("Confirmer le nouveau mot de passe", { exact: true }).fill(password);
+    await page.getByLabel(/J’accepte les conditions/).check();
+    await page.getByLabel(/Je confirme avoir lu/).check();
     await page.getByRole("button", { name: "Activer mon compte" }).click();
     await expect(page).toHaveURL(/\/student\/dashboard/, { timeout: 60_000 });
   } finally {

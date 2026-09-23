@@ -19,6 +19,7 @@ import { RouteTransition } from "./route-transition";
 import { PushPermissionPrompt } from "@/components/notifications/push-permission-prompt";
 import { ProfilePhotoNotice } from "@/components/account/profile-photo-notice";
 import { NetworkStatusBanner } from "@/components/layout/network-status-banner";
+import { LegalLinks } from "@/components/legal/legal-links";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -36,7 +37,6 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
   function toggleSidebar() {
     setCollapsed((current) => {
       const next = !current;
-      window.localStorage.setItem(`presence-plus:${role.toLocaleLowerCase()}-sidebar`, next ? "collapsed" : "expanded");
       document.cookie = `presence-plus-${role.toLocaleLowerCase()}-sidebar=${next ? "collapsed" : "expanded"}; Path=/; Max-Age=31536000; SameSite=Lax`;
       return next;
     });
@@ -85,6 +85,9 @@ export function DashboardLayout({ children, role, user, anomalies = [], onReload
         >
           <ProfilePhotoNotice user={user} />
           <RouteTransition>{children}</RouteTransition>
+          <footer className="print:hidden mt-10 border-t pt-5">
+            <LegalLinks />
+          </footer>
         </main>
       </div>
       <PushPermissionPrompt vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY} />

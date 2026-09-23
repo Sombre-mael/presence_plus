@@ -129,13 +129,21 @@ Presence Plus applique plusieurs règles afin de protéger la cohérence des don
 
 ## Exploitation et accès
 
-Les parcours administrateur, enseignant et étudiant utilisent Prisma et PostgreSQL comme source de vérité. L'accès est assuré par Auth.js avec des sessions de huit heures, un contrôle du rôle côté serveur et un registre de sessions permettant de révoquer les appareils connectés.
+Les parcours administrateur, enseignant et étudiant utilisent Prisma et PostgreSQL comme source de vérité. L'accès est assuré par Auth.js avec des sessions de quatorze jours au maximum, une expiration après sept jours d’inactivité, un contrôle du rôle côté serveur et un registre de sessions permettant de révoquer les appareils connectés.
 
 Il n'existe pas d'inscription publique. Le premier administrateur est créé par une commande contrôlée, puis l'administration invite les enseignants et étudiants. Une adresse e-mail unique est obligatoire pour chaque compte : elle reçoit le lien personnel d'activation et les instructions de récupération. Le matricule étudiant reste disponible comme identifiant de connexion secondaire. Un code à usage unique peut servir de solution de secours avec l'adresse e-mail du compte.
 
 Le premier administrateur reçoit le niveau `SUPER`. Il peut déléguer ce niveau, gérer les autres administrateurs et révoquer leurs sessions. Les administrateurs standards gèrent les étudiants, enseignants, référentiels académiques et vérifications de photos, sans pouvoir modifier un compte administrateur.
 
 Une installation destinée aux utilisateurs doit disposer d'une URL HTTPS, d'un secret Auth dédié, d'une base PostgreSQL migrée et d'un domaine d'envoi Resend vérifié. Le mode d'e-mail simulé est automatiquement refusé sur Vercel en production.
+
+## Confidentialité et droits
+
+Presence Plus fournit trois documents publics : politique de confidentialité, conditions d’utilisation et information sur les cookies. L’établissement configuré dans l’administration système est responsable du traitement des données académiques; l’équipe Presence Plus agit comme prestataire technique.
+
+L’activation d’un compte exige une acceptation distincte des conditions et une prise de connaissance de la politique de confidentialité. Les utilisateurs existants doivent valider toute nouvelle version avant de retrouver les fonctions métier. Chaque utilisateur dispose d’un centre de confidentialité pour demander un accès, une rectification, un export, une opposition ou une suppression. Les décisions sont tracées et les historiques académiques ne sont pas supprimés avant l’échéance de conservation applicable.
+
+Le traitement quotidien de conservation est protégé par `CRON_SECRET`. Il nettoie les données techniques arrivées à échéance, supprime les fichiers photo abandonnés et anonymise les comptes inactifs lorsque la période académique est terminée. Configurez ce secret dans Vercel avant d’activer le Cron de production.
 
 ## Technologies principales
 

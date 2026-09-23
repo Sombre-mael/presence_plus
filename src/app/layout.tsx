@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthSessionProvider } from "@/components/auth/session-provider";
 import { PwaRegistration } from "@/components/pwa/pwa-registration";
 import { getAppVersion } from "@/lib/app-version";
+import { PrivacyAwareTelemetry } from "@/components/analytics/privacy-aware-telemetry";
 
 export const metadata: Metadata = {
   title: "Presence Plus",
@@ -36,8 +35,7 @@ export default function RootLayout({
       <body className="min-h-full">
         <AuthSessionProvider><TooltipProvider>{children}</TooltipProvider></AuthSessionProvider>
         <PwaRegistration currentVersion={getAppVersion()} />
-        <Analytics />
-        <SpeedInsights />
+        <PrivacyAwareTelemetry />
       </body>
     </html>
   );

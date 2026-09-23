@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowDown, ArrowRight, ClipboardCheck, Eye, History } from "lucide-react";
 import { AnimatedWorkflow } from "@/components/home/animated-workflow";
 import { Button } from "@/components/ui/button";
+import { LegalLinks } from "@/components/legal/legal-links";
 
 const benefits = [
   {
@@ -97,7 +98,10 @@ export default function Home() {
 
       <footer className="mx-auto flex min-h-16 max-w-6xl flex-col justify-center gap-1 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <span>Presence Plus · Suivi des présences académiques</span>
-        <Link href="/login" className="font-medium text-foreground hover:text-primary">Accéder à la connexion</Link>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <Link href="/login" className="font-medium text-foreground hover:text-primary">Accéder à la connexion</Link>
+          <LegalLinks className="sm:justify-end" />
+        </div>
       </footer>
     </main>
   );

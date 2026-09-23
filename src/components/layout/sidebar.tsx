@@ -23,6 +23,7 @@ import {
   Settings,
   FileUp,
   Activity,
+  FileLock2,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { AdminLevel, Role } from "@/types";
@@ -57,6 +58,7 @@ const navigation: Record<Role, NavItem[]> = {
     { href: "/admin/statistics", label: "Statistiques", icon: BarChart3 },
     { href: "/admin/audit", label: "Journal d’activité", icon: ScrollText },
     { href: "/admin/photo-reviews", label: "Vérification des photos", icon: Images },
+    { href: "/admin/privacy-requests", label: "Demandes de données", icon: FileLock2 },
     { href: "/admin/system", label: "Administration système", icon: Settings, superOnly: true },
   ],
   TEACHER: [
@@ -89,7 +91,7 @@ export function Sidebar({ role, adminLevel, mobile = false, collapsed = false, o
 
   const content = (
     <div className="flex h-full flex-col">
-      <div className={`flex h-16 items-center gap-3 border-b ${collapsed ? "justify-center px-3" : "px-5"}`}>
+      <div className={`flex h-16 shrink-0 items-center gap-3 border-b [@media(max-height:800px)]:h-14 ${collapsed ? "justify-center px-3" : "px-5"}`}>
         <Image src="/logo.svg" alt="" width={34} height={34} priority />
         <div className={`min-w-0 ${collapsed ? "hidden" : ""}`}>
           <p className="truncate text-sm font-semibold">Presence Plus</p>
@@ -98,7 +100,7 @@ export function Sidebar({ role, adminLevel, mobile = false, collapsed = false, o
       </div>
 
       <TooltipProvider>
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3 [scrollbar-gutter:stable] [@media(max-height:800px)]:space-y-0.5 [@media(max-height:800px)]:p-2">
         {(role === "TEACHER" || role === "STUDENT") && (
           <div className="pb-3">
             {mobile ? (
@@ -145,7 +147,7 @@ export function Sidebar({ role, adminLevel, mobile = false, collapsed = false, o
               aria-current={active ? "page" : undefined}
               aria-label={collapsed ? item.label : undefined}
               className={cn(
-                "relative flex h-10 items-center gap-3 overflow-hidden rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                "relative flex h-10 items-center gap-3 overflow-hidden rounded-md px-3 text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(max-height:800px)]:h-9",
                 active && "text-sidebar-accent-foreground",
                 collapsed && "justify-center px-0",
               )}
@@ -176,7 +178,7 @@ export function Sidebar({ role, adminLevel, mobile = false, collapsed = false, o
       </nav>
       </TooltipProvider>
 
-      <div className="border-t p-4">
+      <div className="shrink-0 border-t p-4 [@media(max-height:800px)]:p-2">
         {!collapsed && <div className="flex items-center gap-3 rounded-md bg-muted/60 p-3">
           <School className="size-4 text-primary" />
           <div>

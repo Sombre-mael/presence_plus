@@ -81,6 +81,7 @@ export interface SystemAdministrationData {
   admins: SystemAdminSummary[];
   profilePhotoEnforcementAt: string;
   attendancePolicy: AttendancePolicy;
+  privacySettings: import("@/types/privacy").LegalConfiguration;
 }
 
 export interface AttendancePolicy {

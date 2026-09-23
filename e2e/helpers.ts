@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { assertE2EDatabase, connectE2EWithRetry, createE2EPool } from "./database";
 import { e2eId, e2eLabel, getE2EEnvironment } from "./environment";
+import { PRIVACY_VERSION, TERMS_VERSION } from "../src/lib/legal-policy";
 
 export { e2eLabel } from "./environment";
 
@@ -109,6 +110,7 @@ export async function createAuthUserFixture(options: {
   role?: "ADMIN" | "TEACHER" | "STUDENT";
   adminLevel?: "STANDARD" | "SUPER";
   password?: string;
+  legalAccepted?: boolean;
 } = {}) {
   const pool = createE2EPool();
   const id = e2eId("auth-user");
@@ -124,6 +126,14 @@ export async function createAuthUserFixture(options: {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $8, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [id, e2eLabel(`Compte Auth ${suffix}`), email, passwordHash, options.role ?? "ADMIN", (options.role ?? "ADMIN") === "ADMIN" ? options.adminLevel ?? "STANDARD" : null, options.status ?? "ACTIVE", activated ? new Date() : null, options.mustChangePassword ?? false],
     );
+    if (activated && options.legalAccepted !== false) {
+      await pool.query(
+        `INSERT INTO "LegalAcceptance" (id, "userId", "documentType", version, "acceptedAt", "ipHash") VALUES
+         ($1, $3, 'TERMS', $4, CURRENT_TIMESTAMP, repeat('0', 64)),
+         ($2, $3, 'PRIVACY_NOTICE', $5, CURRENT_TIMESTAMP, repeat('0', 64))`,
+        [e2eId("legal-terms"), e2eId("legal-privacy"), id, TERMS_VERSION, PRIVACY_VERSION],
+      );
+    }
     return { id, email, password };
   } finally {
     await pool.end();
@@ -179,6 +189,7 @@ export async function cleanupAuthUserFixture(userId: string) {
     await client.query(`DELETE FROM "AuditLog" WHERE "actorId" = $1 OR "entityId" = $1`, [userId]);
     await client.query(`DELETE FROM "AuthToken" WHERE "userId" = $1`, [userId]);
     await client.query(`DELETE FROM "AuthThrottle" WHERE "userId" = $1`, [userId]);
+    await client.query(`DELETE FROM "LegalAcceptance" WHERE "userId" = $1`, [userId]);
     await client.query(`DELETE FROM "User" WHERE id = $1`, [userId]);
     await client.query("COMMIT");
   } catch (error) {

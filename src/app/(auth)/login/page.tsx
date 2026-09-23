@@ -7,6 +7,7 @@ import { LoginVisual } from "@/components/auth/login-visual";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthenticatedViewer } from "@/lib/authenticated-viewer";
 import { roleHome, safeCallbackUrl } from "@/lib/auth-navigation";
+import { LegalLinks } from "@/components/legal/legal-links";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,11 @@ const notices: Record<string, string> = {
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ callbackUrl?: string; notice?: string }> }) {
   const params = await searchParams;
   const viewer = await getAuthenticatedViewer();
-  if (viewer) redirect(viewer.mustChangePassword ? "/change-password" : roleHome(viewer.role));
+  if (viewer) {
+    if (viewer.mustChangePassword) redirect("/change-password");
+    if (viewer.legalAcceptanceRequired) redirect("/legal/acceptance");
+    redirect(roleHome(viewer.role));
+  }
   return (
     <main className="grid min-h-screen bg-[#f6f8f7] lg:grid-cols-[minmax(420px,0.92fr)_minmax(520px,1.08fr)]">
       <section className="relative hidden min-h-screen overflow-hidden bg-[#12332c] px-10 py-8 text-white lg:flex lg:flex-col xl:px-14 xl:py-10">
@@ -36,6 +41,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <CardHeader className="space-y-2 pb-5"><p className="text-xs font-semibold uppercase text-primary">Accès sécurisé</p><CardTitle className="text-2xl tracking-normal"><h1>Bienvenue</h1></CardTitle><CardDescription>Utilisez l’e-mail fourni par votre établissement ou votre matricule étudiant.</CardDescription></CardHeader>
             <CardContent><LoginForm callbackUrl={safeCallbackUrl(params.callbackUrl)} message={params.notice ? notices[params.notice] : undefined} /></CardContent>
           </Card>
+          <LegalLinks className="mt-5 justify-center text-center" />
         </div>
       </section>
     </main>

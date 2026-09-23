@@ -12,6 +12,7 @@ export default async function StudentLayout({ children }: { children: ReactNode 
   if (!viewer) redirect("/login");
   if (viewer.role !== "STUDENT") redirect(roleHome(viewer.role));
   if (viewer.mustChangePassword) redirect("/change-password");
+  if (viewer.legalAcceptanceRequired) redirect("/legal/acceptance");
   const collapsed = (await cookies()).get("presence-plus-student-sidebar")?.value === "collapsed";
   const initialState = await getAcademicSnapshot(viewer);
   return (

@@ -12,6 +12,7 @@ export default async function TeacherLayout({ children }: { children: ReactNode 
   if (!viewer) redirect("/login");
   if (viewer.role !== "TEACHER") redirect(roleHome(viewer.role));
   if (viewer.mustChangePassword) redirect("/change-password");
+  if (viewer.legalAcceptanceRequired) redirect("/legal/acceptance");
   const collapsed = (await cookies()).get("presence-plus-teacher-sidebar")?.value === "collapsed";
   const initialState = await getAcademicSnapshot(viewer);
   return (

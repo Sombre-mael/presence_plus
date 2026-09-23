@@ -180,7 +180,7 @@ export async function applyAdminImportAction(kind: AdminImportKind, csvText: str
           const value = schemas.USERS.parse(raw);
           const promotionId = value.role === "STUDENT" ? promotionByName.get(value.promotion.toLocaleLowerCase("fr")) : null;
           if (value.role === "STUDENT" && !promotionId) throw new Error("Une promotion étudiante n’est plus disponible.");
-          const user = await tx.user.create({ data: { name: value.nom, email: value.email, role: value.role, status: value.statut, passwordHash: bulkPasswordHash, activatedAt: null, mustChangePassword: true, matricule: value.role === "STUDENT" ? value.matricule.toLocaleUpperCase("fr") : null, promotionId } });
+          const user = await tx.user.create({ data: { name: value.nom, email: value.email, role: value.role, status: value.statut, dataRetentionStartedAt: value.statut === "INACTIVE" ? new Date() : null, passwordHash: bulkPasswordHash, activatedAt: null, mustChangePassword: true, matricule: value.role === "STUDENT" ? value.matricule.toLocaleUpperCase("fr") : null, promotionId } });
           if (value.statut === "ACTIVE") {
             const token = await issueAuthToken(user.id, "INVITATION", tx);
             issued.push({ tokenId: token.id, email: user.email, name: user.name, token: token.token, manualCode: token.manualCode });

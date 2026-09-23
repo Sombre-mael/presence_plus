@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LegalLinks } from "@/components/legal/legal-links";
 
 export function AuthPageShell({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
@@ -13,6 +14,7 @@ export function AuthPageShell({ title, description, children }: { title: string;
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
           <div className="mt-5 sm:mt-6">{children}</div>
         </section>
+        <LegalLinks className="mt-5 justify-center text-center" />
       </div>
     </main>
   );

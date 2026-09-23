@@ -72,7 +72,8 @@ async function main() {
       email: user.email,
       role: user.role,
       adminLevel: user.role === Role.ADMIN ? AdminLevel.SUPER : null,
-      status: user.status,
+        status: user.status,
+        dataRetentionStartedAt: user.status === UserStatus.INACTIVE ? now : null,
       matricule: user.matricule,
     };
     await prisma.user.upsert({

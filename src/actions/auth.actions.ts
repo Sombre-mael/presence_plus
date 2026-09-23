@@ -1,6 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin, verifyViewerPassword } from "@/lib/admin-access.server";
 import { getAuthenticatedViewer, getViewerForRole } from "@/lib/authenticated-viewer";
@@ -12,7 +13,8 @@ import {
 } from "@/lib/auth-throttle.server";
 import { currentClientIp } from "@/lib/auth-request.server";
 import { inspectAuthCode, inspectAuthToken, issueAuthToken } from "@/lib/auth-token.server";
-import { hashOpaqueToken, normalizeIdentifier } from "@/lib/auth-crypto.server";
+import { hashOpaqueToken, hashSensitiveKey, normalizeIdentifier } from "@/lib/auth-crypto.server";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal-policy";
 import { authActionPath, deliverAuthEmail } from "@/lib/auth-email.server";
 import { evaluatePassword } from "@/lib/password-policy";
 import { listActiveAuthSessions, revokeAuthSessions } from "@/lib/auth-session.server";
@@ -98,7 +100,18 @@ async function consumeCredentialAndSetPassword(
   type: "INVITATION" | "PASSWORD_RESET",
   password: string,
   confirmation: string,
+  legalAcceptance?: { termsAccepted: boolean; privacyAcknowledged: boolean },
 ): Promise<AuthActionResult<AuthPasswordSuccess>> {
+  if (type === "INVITATION" && (!legalAcceptance?.termsAccepted || !legalAcceptance.privacyAcknowledged)) {
+    return {
+      ok: false,
+      message: "Les deux confirmations juridiques sont nécessaires pour activer votre compte.",
+      fieldErrors: {
+        ...(!legalAcceptance?.termsAccepted ? { termsAccepted: "Acceptez les conditions d’utilisation." } : {}),
+        ...(!legalAcceptance?.privacyAcknowledged ? { privacyAcknowledged: "Confirmez avoir lu la politique de confidentialité." } : {}),
+      },
+    };
+  }
   const throttleKey = credential.token
     ? `token:${hashOpaqueToken(credential.token)}`
     : `code:${normalizeIdentifier(credential.identifier ?? "")}`;
@@ -129,6 +142,8 @@ async function consumeCredentialAndSetPassword(
   if (validation) return validation;
   const passwordHash = await bcrypt.hash(password, 12);
   const now = new Date();
+  const userAgent = (await headers()).get("user-agent")?.slice(0, 500) ?? null;
+  const ipHash = hashSensitiveKey(`legal-acceptance-ip:${ip}`);
 
   try {
     await withSerializableRetry(() => prisma.$transaction(async (tx) => {
@@ -147,6 +162,20 @@ async function consumeCredentialAndSetPassword(
           sessionVersion: { increment: 1 },
         },
       });
+      if (type === "INVITATION") {
+        await Promise.all([
+          tx.legalAcceptance.upsert({
+            where: { userId_documentType_version: { userId: inspected.user.id, documentType: "TERMS", version: TERMS_VERSION } },
+            create: { userId: inspected.user.id, documentType: "TERMS", version: TERMS_VERSION, acceptedAt: now, ipHash, userAgent },
+            update: {},
+          }),
+          tx.legalAcceptance.upsert({
+            where: { userId_documentType_version: { userId: inspected.user.id, documentType: "PRIVACY_NOTICE", version: PRIVACY_VERSION } },
+            create: { userId: inspected.user.id, documentType: "PRIVACY_NOTICE", version: PRIVACY_VERSION, acceptedAt: now, ipHash, userAgent },
+            update: {},
+          }),
+        ]);
+      }
       await tx.authToken.updateMany({ where: { userId: inspected.user.id, usedAt: null }, data: { usedAt: now } });
       await revokeAuthSessions(tx, inspected.user.id, type === "INVITATION" ? "ACCOUNT_ACTIVATED" : "PASSWORD_RESET", undefined, now);
       await tx.auditLog.create({
@@ -207,8 +236,22 @@ export async function previewAuthCodeAction(
   };
 }
 
-export async function activateAccountAction(token: string, password: string, confirmation: string, identifier?: string, manualCode?: string) {
-  return consumeCredentialAndSetPassword({ token: token || undefined, identifier, manualCode }, "INVITATION", password, confirmation);
+export async function activateAccountAction(
+  token: string,
+  password: string,
+  confirmation: string,
+  identifier?: string,
+  manualCode?: string,
+  termsAccepted = false,
+  privacyAcknowledged = false,
+) {
+  return consumeCredentialAndSetPassword(
+    { token: token || undefined, identifier, manualCode },
+    "INVITATION",
+    password,
+    confirmation,
+    { termsAccepted, privacyAcknowledged },
+  );
 }
 
 export async function resetPasswordAction(token: string, password: string, confirmation: string, identifier?: string, manualCode?: string) {

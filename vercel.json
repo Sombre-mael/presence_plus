@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm build:production"
+  "buildCommand": "pnpm build:production",
+  "crons": [
+    {
+      "path": "/api/cron/privacy-retention",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }

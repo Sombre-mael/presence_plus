@@ -14,6 +14,8 @@ import type { AuthActionResult } from "@/types/auth";
 import { z } from "zod";
 import { getAttendancePolicy } from "@/lib/attendance-policy.server";
 import type { AttendancePolicy } from "@/types/admin";
+import { getLegalConfiguration } from "@/lib/legal.server";
+import type { LegalConfiguration } from "@/types/privacy";
 
 const attendancePolicySchema = z.object({
   attendanceAlertThreshold: z.coerce.number().int().min(50).max(100),
@@ -23,11 +25,21 @@ const attendancePolicySchema = z.object({
   correctionWindowDays: z.coerce.number().int().min(1).max(180),
 });
 
+const privacySettingsSchema = z.object({
+  institutionName: z.string().trim().min(2, "Indiquez le nom de l’établissement.").max(160),
+  institutionAddress: z.string().trim().min(3, "Indiquez l’adresse de l’établissement.").max(300),
+  privacyContactEmail: z.email("Adresse e-mail invalide."),
+  privacyContactPhone: z.string().trim().max(40).optional(),
+  institutionLegalDetails: z.string().trim().max(500).optional(),
+  academicRetentionMonths: z.coerce.number().int().min(12).max(120),
+  auditRetentionMonths: z.coerce.number().int().min(6).max(60),
+});
+
 export async function getSystemAdministrationData(): Promise<SystemAdministrationData | null> {
   const viewer = await getViewerForRole("ADMIN");
   if (!isSuperAdmin(viewer)) return null;
   const now = new Date();
-  const [admins, enforcementAt, attendancePolicy] = await Promise.all([
+  const [admins, enforcementAt, attendancePolicy, privacySettings] = await Promise.all([
     prisma.user.findMany({
       where: { role: "ADMIN" },
       orderBy: [{ adminLevel: "desc" }, { name: "asc" }],
@@ -43,6 +55,7 @@ export async function getSystemAdministrationData(): Promise<SystemAdministratio
     }),
     getProfilePhotoEnforcementAt(),
     getAttendancePolicy(),
+    getLegalConfiguration(),
   ]);
   return {
     admins: admins.flatMap((admin) => admin.adminLevel ? [{
@@ -56,7 +69,63 @@ export async function getSystemAdministrationData(): Promise<SystemAdministratio
     }] : []),
     profilePhotoEnforcementAt: enforcementAt.toISOString(),
     attendancePolicy,
+    privacySettings,
   };
+}
+
+export async function updatePrivacySettingsAction(
+  input: LegalConfiguration,
+  currentPassword: string,
+): Promise<AuthActionResult<LegalConfiguration>> {
+  const viewer = await getViewerForRole("ADMIN");
+  if (!isSuperAdmin(viewer)) return { ok: false, message: "Accès super administrateur requis." };
+  if (!await verifyViewerPassword(viewer.id, currentPassword)) {
+    return { ok: false, message: "Le mot de passe actuel est incorrect.", fieldErrors: { currentPassword: "Vérifiez votre mot de passe." } };
+  }
+  const parsed = privacySettingsSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Vérifiez les informations de l’établissement.",
+      fieldErrors: Object.fromEntries(parsed.error.issues.map((issue) => [String(issue.path[0]), issue.message])),
+    };
+  }
+  const settings = {
+    ...parsed.data,
+    privacyContactPhone: parsed.data.privacyContactPhone || null,
+    institutionLegalDetails: parsed.data.institutionLegalDetails || null,
+  };
+  try {
+    await withSerializableRetry(() => prisma.$transaction(async (tx) => {
+      await tx.systemSetting.upsert({
+        where: { id: "default" },
+        create: { id: "default", profilePhotoEnforcementAt: new Date("2100-01-01T00:00:00.000Z"), ...settings },
+        update: settings,
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: viewer.id,
+          action: "UPDATE_PRIVACY_SETTINGS",
+          entityType: "SystemSetting",
+          entityId: "default",
+          metadata: { academicRetentionMonths: settings.academicRetentionMonths, auditRetentionMonths: settings.auditRetentionMonths },
+        },
+      });
+    }, SERIALIZABLE_TRANSACTION_OPTIONS));
+    revalidatePath("/admin/system");
+    revalidatePath("/legal/privacy");
+    return {
+      ok: true,
+      message: "Les informations juridiques ont été enregistrées.",
+      value: {
+        ...settings,
+        privacyContactPhone: settings.privacyContactPhone ?? undefined,
+        institutionLegalDetails: settings.institutionLegalDetails ?? undefined,
+      },
+    };
+  } catch {
+    return { ok: false, message: "Les informations juridiques n’ont pas pu être enregistrées." };
+  }
 }
 
 export async function updateAttendancePolicyAction(
